@@ -39,14 +39,13 @@ export interface PrintOptions {
 }
 
 /**
- * 8181 collides surprisingly often — it's QZ Tray's own default, and a
- * handful of unrelated dev tools default to it too. PrintPort's server tries
- * these same ports in this same order (see server/src/wsServer.ts
- * PORT_CANDIDATES) and binds whichever is free first, so the SDK tries them
- * in the same order to find it — the same fallback approach QZ Tray itself
- * uses.
+ * 8181 collides surprisingly often — it's QZ Tray's own default, and QZ Tray
+ * also occupies 8282 as its own secondary port, which rules that out as a
+ * fallback too. PrintPort's server tries these same ports in this same
+ * order (see server/src/wsServer.ts PORT_CANDIDATES) and binds whichever is
+ * free first, so the SDK tries them in the same order to find it.
  */
-const DEFAULT_PORT_CANDIDATES = [8181, 8282, 8283];
+const DEFAULT_PORT_CANDIDATES = [8181, 18181, 28181];
 
 export interface PrintPortOptions {
   host?: string;

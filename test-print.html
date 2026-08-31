@@ -59,11 +59,12 @@
 // standalone via double-click (file://) with no build step or web server.
 // Source of truth: /client-sdk/src/printport.ts — keep behavior in sync.
 const PINNED_FINGERPRINT_STORAGE = "printport:pinnedFingerprint";
-// 8181 collides surprisingly often (it's QZ Tray's own default, and a few
-// unrelated dev tools default to it too) — the server tries this same list
-// in this same order (server/src/wsServer.ts PORT_CANDIDATES) and binds
-// whichever is free first, so we try them in the same order to find it.
-const DEFAULT_PORT_CANDIDATES = [8181, 8282, 8283];
+// 8181 collides surprisingly often (it's QZ Tray's own default), and QZ Tray
+// also occupies 8282 as its own secondary port, which rules that out as a
+// fallback too. The server tries this same list in this same order
+// (server/src/wsServer.ts PORT_CANDIDATES) and binds whichever is free
+// first, so we try them in the same order to find it.
+const DEFAULT_PORT_CANDIDATES = [8181, 18181, 28181];
 
 class PrintPort {
   constructor(options = {}) {

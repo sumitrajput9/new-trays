@@ -18,14 +18,15 @@ import {
 
 // 8181 collides surprisingly often — it's QZ Tray's own default, and a
 // handful of unrelated dev tools (Java embedded servers, etc.) default to it
-// too, as we found the hard way across three different machines. Rather
-// than make users hunt down and close whatever's squatting on it, PrintPort
-// tries a short, fixed list of fallback ports — same approach QZ Tray itself
-// uses. The client SDK's candidate list (client-sdk/src/printport.ts) must
-// stay in sync with this one so a page can find whichever port we landed on.
+// too, as we found the hard way across several machines. QZ Tray itself
+// also occupies 8282 as its own secondary port, which rules that out as a
+// fallback choice too — so these fallbacks are deliberately distinctive
+// numbers instead of just incrementing by 100. The client SDK's candidate
+// list (client-sdk/src/printport.ts) must stay in sync with this one so a
+// page can find whichever port we landed on.
 export const PORT_CANDIDATES = process.env.PRINTPORT_PORT
   ? [Number(process.env.PRINTPORT_PORT)]
-  : [8181, 8282, 8283];
+  : [8181, 18181, 28181];
 
 export interface BridgeStatus {
   activeConnections: number;
