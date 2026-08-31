@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PrintPort
+Comment=Local print bridge for web apps
+Exec=printport --hidden
+Icon=printport
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true

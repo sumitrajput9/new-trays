@@ -1,0 +1,22 @@
+{
+  "name": "printport",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PrintPort — a local print-bridge system for connecting web pages to printers, scales, and scanners.",
+  "workspaces": [
+    "server",
+    "client-sdk",
+    "website"
+  ],
+  "scripts": {
+    "server:dev": "npm run dev --workspace server",
+    "server:build": "npm run build --workspace server",
+    "server:dist:win": "npm run dist:win --workspace server",
+    "server:dist:mac": "npm run dist:mac --workspace server",
+    "server:dist:linux": "npm run dist:linux --workspace server",
+    "sdk:build": "npm run build --workspace client-sdk",
+    "website:dev": "npm run dev --workspace website",
+    "website:build": "npm run build --workspace website"
+  },
+  "license": "UNLICENSED"
+}
