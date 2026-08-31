@@ -1,6 +1,7 @@
 import https from "https";
 import type { IncomingMessage as HttpRequest, ServerResponse } from "http";
 import { WebSocket, WebSocketServer } from "ws";
+import { dialog } from "electron";
 import { CertBundle } from "./certManager";
 import { signEnvelope } from "./signing";
 import { logger } from "./logger";
@@ -15,12 +16,20 @@ import {
   DeviceInfo,
 } from "./types";
 
-// Overridable for local dev when 8181 is already taken by another app
-// (e.g. the real QZ Tray, which defaults to this same port).
-export const PRINTPORT_PORT = Number(process.env.PRINTPORT_PORT) || 8181;
+// 8181 collides surprisingly often — it's QZ Tray's own default, and a
+// handful of unrelated dev tools (Java embedded servers, etc.) default to it
+// too, as we found the hard way across three different machines. Rather
+// than make users hunt down and close whatever's squatting on it, PrintPort
+// tries a short, fixed list of fallback ports — same approach QZ Tray itself
+// uses. The client SDK's candidate list (client-sdk/src/printport.ts) must
+// stay in sync with this one so a page can find whichever port we landed on.
+export const PORT_CANDIDATES = process.env.PRINTPORT_PORT
+  ? [Number(process.env.PRINTPORT_PORT)]
+  : [8181, 8282, 8283];
 
 export interface BridgeStatus {
   activeConnections: number;
+  boundPort: number | undefined;
 }
 
 type StatusListener = (status: BridgeStatus) => void;
@@ -30,6 +39,7 @@ export class PrintPortServer {
   private httpsServer: https.Server;
   private statusListeners = new Set<StatusListener>();
   private connections = new Set<WebSocket>();
+  private boundPort: number | undefined;
 
   constructor(private bundle: CertBundle) {
     this.httpsServer = https.createServer({
@@ -47,20 +57,38 @@ export class PrintPortServer {
     // the HTTP layer never answers, and the request just hangs/times out.
     this.httpsServer.on("request", (req, res) => this.handleHttpRequest(req, res));
 
-    this.httpsServer.on("error", (err: NodeJS.ErrnoException) => {
+    this.tryListen(0);
+  }
+
+  private tryListen(candidateIndex: number): void {
+    const port = PORT_CANDIDATES[candidateIndex];
+
+    if (port === undefined) {
+      const message =
+        `PrintPort couldn't start: every port it tries (${PORT_CANDIDATES.join(", ")}) is already in use ` +
+        `by another application on this computer. Close whichever app is using one of those ports, then ` +
+        `restart PrintPort.`;
+      logger.error(message);
+      dialog.showErrorBox("PrintPort couldn't start", message);
+      return;
+    }
+
+    const onError = (err: NodeJS.ErrnoException) => {
+      this.httpsServer.removeListener("error", onError);
       if (err.code === "EADDRINUSE" || err.code === "EACCES") {
-        logger.error(
-          `Port ${PRINTPORT_PORT} is already in use by another application (Windows reports this as ` +
-            `"${err.code}") — PrintPort cannot start its bridge. Close whatever else is using this port, ` +
-            `or set the PRINTPORT_PORT environment variable to run on a different port.`
-        );
+        logger.error(`Port ${port} unavailable (${err.code}) — trying the next candidate port...`);
+        this.tryListen(candidateIndex + 1);
       } else {
         logger.error(`Bridge server error: ${err.message}`);
       }
-    });
+    };
 
-    this.httpsServer.listen(PRINTPORT_PORT, "127.0.0.1", () => {
-      logger.info(`PrintPort bridge listening on wss://127.0.0.1:${PRINTPORT_PORT}`);
+    this.httpsServer.once("error", onError);
+    this.httpsServer.listen(port, "127.0.0.1", () => {
+      this.httpsServer.removeListener("error", onError);
+      this.boundPort = port;
+      logger.info(`PrintPort bridge listening on wss://127.0.0.1:${port}`);
+      this.notifyStatus();
     });
   }
 
@@ -69,7 +97,7 @@ export class PrintPortServer {
   }
 
   private notifyStatus(): void {
-    const status: BridgeStatus = { activeConnections: this.connections.size };
+    const status: BridgeStatus = { activeConnections: this.connections.size, boundPort: this.boundPort };
     this.statusListeners.forEach((l) => l(status));
   }
 
@@ -82,7 +110,7 @@ export class PrintPortServer {
       <h1>✅ PrintPort bridge is running</h1>
       <p>${this.connections.size} browser connection(s) currently active.</p>
       <p>If you opened this page to trust PrintPort's local certificate, you can close this tab now —
-      pages using the PrintPort SDK will connect over <code>wss://127.0.0.1:${PRINTPORT_PORT}</code> automatically.</p>
+      pages using the PrintPort SDK will connect over <code>wss://127.0.0.1:${this.boundPort}</code> automatically.</p>
       </body></html>`
     );
   }

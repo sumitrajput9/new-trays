@@ -1,6 +1,6 @@
 import { Tray, Menu, nativeImage, app, shell, dialog } from "electron";
 import path from "path";
-import { BridgeStatus, PRINTPORT_PORT } from "./wsServer";
+import { BridgeStatus } from "./wsServer";
 
 function loadTrayIcon(): Electron.NativeImage {
   const iconName = process.platform === "win32" ? "icon.ico" : "iconTemplate.png";
@@ -22,13 +22,16 @@ export function createTray(getStatus: () => BridgeStatus, onRestart: () => void)
     const status = getStatus();
     const menu = Menu.buildFromTemplate([
       {
-        label: `● ${status.activeConnections} active connection${status.activeConnections === 1 ? "" : "s"}`,
+        label: status.boundPort
+          ? `● ${status.activeConnections} active connection${status.activeConnections === 1 ? "" : "s"} (port ${status.boundPort})`
+          : "● Not running — see About for details",
         enabled: false,
       },
       { type: "separator" },
       {
         label: "Open Dashboard",
-        click: () => shell.openExternal(`https://127.0.0.1:${PRINTPORT_PORT}`),
+        enabled: !!status.boundPort,
+        click: () => shell.openExternal(`https://127.0.0.1:${status.boundPort}`),
       },
       {
         label: "Restart",
@@ -40,7 +43,9 @@ export function createTray(getStatus: () => BridgeStatus, onRestart: () => void)
           dialog.showMessageBox({
             title: "About PrintPort",
             message: "PrintPort",
-            detail: `Local print bridge\nVersion ${app.getVersion()}\nListening on wss://127.0.0.1:${PRINTPORT_PORT}`,
+            detail: status.boundPort
+              ? `Local print bridge\nVersion ${app.getVersion()}\nListening on wss://127.0.0.1:${status.boundPort}`
+              : `Local print bridge\nVersion ${app.getVersion()}\nNot currently listening on any port — every candidate port was already in use. Close other apps using ports 8181/8282/8283 and restart PrintPort.`,
           }),
       },
       { type: "separator" },

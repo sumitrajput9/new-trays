@@ -38,10 +38,21 @@ export interface PrintOptions {
   connection?: string;
 }
 
+/**
+ * 8181 collides surprisingly often — it's QZ Tray's own default, and a
+ * handful of unrelated dev tools default to it too. PrintPort's server tries
+ * these same ports in this same order (see server/src/wsServer.ts
+ * PORT_CANDIDATES) and binds whichever is free first, so the SDK tries them
+ * in the same order to find it — the same fallback approach QZ Tray itself
+ * uses.
+ */
+const DEFAULT_PORT_CANDIDATES = [8181, 8282, 8283];
+
 export interface PrintPortOptions {
   host?: string;
+  /** Pin to one specific port instead of trying the default candidate list. */
   port?: number;
-  /** ms to wait for the bridge before assuming it isn't installed. */
+  /** ms to wait per candidate port before trying the next one. */
   connectTimeoutMs?: number;
   /** Called if the bridge can't be reached — show your own "please install" UI,
    *  or leave unset to let the SDK show a built-in prompt. */
@@ -73,47 +84,38 @@ export class PrintPort {
     { resolve: (v: unknown) => void; reject: (e: Error) => void; skipVerify: boolean }
   >();
   private pinnedPublicKey: CryptoKey | undefined;
-  private opts: Required<PrintPortOptions>;
+  private opts: Omit<Required<PrintPortOptions>, "port">;
+  private portCandidates: number[];
 
   constructor(options: PrintPortOptions = {}) {
     this.opts = {
       host: options.host ?? "127.0.0.1",
-      port: options.port ?? 8181,
       connectTimeoutMs: options.connectTimeoutMs ?? 2500,
       onNotInstalled: options.onNotInstalled ?? defaultNotInstalledPrompt,
       downloadUrl: options.downloadUrl ?? "https://printport.example.com/download",
     };
+    // An explicit port pins to only that one; otherwise try the same
+    // fallback list the server itself tries, in order.
+    this.portCandidates = options.port ? [options.port] : DEFAULT_PORT_CANDIDATES;
   }
 
   async connect(): Promise<void> {
-    const url = `wss://${this.opts.host}:${this.opts.port}`;
+    let lastError: Error = new PrintPortNotInstalledError("PrintPort bridge not reachable");
 
-    await new Promise<void>((resolve, reject) => {
-      const socket = new WebSocket(url);
-      const timer = setTimeout(() => {
-        socket.close();
-        const err = new PrintPortNotInstalledError("PrintPort bridge not reachable");
-        this.opts.onNotInstalled(this.opts.downloadUrl);
-        reject(err);
-      }, this.opts.connectTimeoutMs);
+    for (const port of this.portCandidates) {
+      try {
+        this.ws = await this.connectToPort(port);
+        lastError = undefined as unknown as Error;
+        break;
+      } catch (err) {
+        lastError = err as Error;
+      }
+    }
 
-      socket.addEventListener("open", () => {
-        clearTimeout(timer);
-        this.ws = socket;
-        resolve();
-      });
-
-      socket.addEventListener("message", (ev) => this.onMessage(ev.data));
-
-      socket.addEventListener("error", () => {
-        clearTimeout(timer);
-        reject(new Error("Failed to connect to PrintPort bridge"));
-      });
-
-      socket.addEventListener("close", () => {
-        this.ws = undefined;
-      });
-    });
+    if (!this.ws) {
+      this.opts.onNotInstalled(this.opts.downloadUrl);
+      throw lastError;
+    }
 
     // Fetch + pin the signing key the first time we ever see this bridge.
     if (!this.pinnedPublicKey) {
@@ -124,6 +126,34 @@ export class PrintPort {
       );
       await this.trustKey(cert.keyFingerprint, cert.signingPublicKeyPem);
     }
+  }
+
+  private connectToPort(port: number): Promise<WebSocket> {
+    const url = `wss://${this.opts.host}:${port}`;
+
+    return new Promise<WebSocket>((resolve, reject) => {
+      const socket = new WebSocket(url);
+      const timer = setTimeout(() => {
+        socket.close();
+        reject(new Error(`Timed out connecting to port ${port}`));
+      }, this.opts.connectTimeoutMs);
+
+      socket.addEventListener("open", () => {
+        clearTimeout(timer);
+        resolve(socket);
+      });
+
+      socket.addEventListener("message", (ev) => this.onMessage(ev.data));
+
+      socket.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new Error(`Failed to connect to PrintPort bridge on port ${port}`));
+      });
+
+      socket.addEventListener("close", () => {
+        if (this.ws === socket) this.ws = undefined;
+      });
+    });
   }
 
   private async trustKey(fingerprint: string, publicKeyPem: string): Promise<void> {
