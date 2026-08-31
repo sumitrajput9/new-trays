@@ -1,5 +1,5 @@
 #!/bin/bash
-# Debian postinst hook (wired via electron-builder's build.linux.afterInstall,
+# Debian postinst hook (wired via electron-builder's build.deb.afterInstall,
 # see server/package.json). AppImage users get the same effect by running
 # `printport --generate-cert-and-exit` once manually — AppImages have no
 # postinst hook, so document that path in the website's Linux download tab.

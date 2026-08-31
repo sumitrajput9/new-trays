@@ -22,7 +22,7 @@
     "@types/node": "^20.14.0",
     "@types/node-forge": "^1.3.11",
     "@types/ws": "^8.5.10",
-    "electron": "^31.0.0",
+    "electron": "31.7.7",
     "electron-builder": "^24.13.3",
     "typescript": "^5.5.0"
   },
@@ -71,9 +71,12 @@
       "desktop": {
         "Name": "PrintPort",
         "Comment": "Local print bridge for web apps"
-      },
+      }
+    },
+    "deb": {
       "afterInstall": "../installers/linux/postinst.sh"
     }
   },
+  "author": "PrintPort",
   "license": "UNLICENSED"
 }
