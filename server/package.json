@@ -37,6 +37,7 @@
     "directories": {
       "output": "../installers/out"
     },
+    "npmRebuild": false,
     "extraResources": [
       { "from": "assets", "to": "assets" }
     ],
