@@ -4,6 +4,7 @@ dist/
 out/
 installers/out/
 *.log
+*.tsbuildinfo
 .env
 .env.local
 .DS_Store
