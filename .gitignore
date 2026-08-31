@@ -3,6 +3,7 @@ dist/
 .next/
 out/
 installers/out/
+*.zip
 *.log
 *.tsbuildinfo
 .env
