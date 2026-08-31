@@ -28,7 +28,17 @@
   <button id="connectBtn">Connect to PrintPort</button>
 
   <div id="failedCard" class="card" style="display:none">
-    <strong>Two things this usually means:</strong>
+    <strong>PrintPort doesn't seem to be installed or running.</strong>
+    <p style="margin:10px 0">
+      <a id="downloadLink" href="./PrintPort Setup 1.0.0.exe" download
+         style="display:inline-block;background:#4da3ff;color:#051324;font-weight:600;padding:9px 16px;border-radius:8px;text-decoration:none">
+        ⬇ Download &amp; install PrintPort
+      </a>
+    </p>
+    <p style="font-size:13px;color:#9aa7bd">
+      (Looks for <code>PrintPort Setup 1.0.0.exe</code> in this same folder. If it's not there, ask whoever sent you this page for it.)
+    </p>
+    <strong>Already installed? Two things this usually means instead:</strong>
     <ol>
       <li><strong>Trust the local certificate</strong> — open <a href="https://127.0.0.1:8181" target="_blank" rel="noopener">https://127.0.0.1:8181</a> in a new tab, click <em>Advanced → Proceed</em>, then click Connect again. (Skip this if PrintPort was installed via its real installer — that trusts the certificate automatically.)</li>
       <li><strong>Make sure PrintPort is running</strong> — look for its icon in the system tray.</li>
