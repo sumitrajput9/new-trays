@@ -12,19 +12,37 @@
 ; left behind by an earlier crash) makes NSIS pop up "PrintPort cannot be
 ; closed, please close it manually" during the file-copy step. Force-closing
 ; our own exe by name here is safe and standard practice for tray apps that
-; have no window to send a graceful close request to.
+; have no window to send a graceful close request to. Uses plain ExecWait
+; (a core NSIS instruction) rather than a plugin, so it never depends on
+; whether a given plugin happens to be bundled.
 !macro customInit
   DetailPrint "Making sure no previous PrintPort instance is running..."
-  nsExec::Exec 'taskkill /F /IM PrintPort.exe /T'
-  Pop $0
+  ExecWait 'taskkill /F /IM PrintPort.exe /T'
 !macroend
 
 !macro customInstall
   DetailPrint "Starting PrintPort once to generate its local certificate..."
   ExecWait '"$INSTDIR\PrintPort.exe" --generate-cert-and-exit' $0
+  ${If} $0 != 0
+    DetailPrint "Warning: PrintPort exited with code $0 while generating its certificate."
+  ${EndIf}
 
-  DetailPrint "Trusting PrintPort's local certificate..."
-  ExecWait 'certutil -user -addstore "Root" "$APPDATA\PrintPort\ca-cert.pem"' $1
+  ${IfNot} ${FileExists} "$APPDATA\PrintPort\ca-cert.pem"
+    MessageBox MB_OK|MB_ICONEXCLAMATION \
+      "PrintPort installed, but its certificate file wasn't found, so this step can't finish automatically.$\r$\n$\r$\n\
+      Websites using PrintPort will show one certificate warning the first time they connect — visit \
+      https://127.0.0.1:8181 once and click through it, and it won't happen again."
+  ${Else}
+    DetailPrint "Trusting PrintPort's local certificate..."
+    ExecWait 'certutil -user -addstore "Root" "$APPDATA\PrintPort\ca-cert.pem"' $1
+    ${If} $1 != 0
+      DetailPrint "Warning: certutil exited with code $1 while trusting the certificate."
+      MessageBox MB_OK|MB_ICONEXCLAMATION \
+        "PrintPort installed, but couldn't automatically trust its certificate (certutil exited with code $1).$\r$\n$\r$\n\
+        Websites using PrintPort will show one certificate warning the first time they connect — visit \
+        https://127.0.0.1:8181 once and click through it, and it won't happen again."
+    ${EndIf}
+  ${EndIf}
 !macroend
 
 !macro customUnInstall
