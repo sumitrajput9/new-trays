@@ -35,10 +35,17 @@
   ${Else}
     DetailPrint "Trusting PrintPort's local certificate..."
     ExecWait 'certutil -user -addstore "Root" "$APPDATA\PrintPort\ca-cert.pem"' $1
-    ${If} $1 != 0
-      DetailPrint "Warning: certutil exited with code $1 while trusting the certificate."
+    DetailPrint "certutil -addstore exit code: $1"
+
+    ; certutil can report success (exit 0) without the certificate actually
+    ; ending up queryable in the store — seen in practice, cause unconfirmed.
+    ; Verify it actually landed rather than trusting the reported exit code.
+    ExecWait 'certutil -user -verifystore "Root" "PrintPort Local CA"' $2
+    DetailPrint "certutil -verifystore exit code: $2"
+
+    ${If} $2 != 0
       MessageBox MB_OK|MB_ICONEXCLAMATION \
-        "PrintPort installed, but couldn't automatically trust its certificate (certutil exited with code $1).$\r$\n$\r$\n\
+        "PrintPort installed, but couldn't automatically trust its certificate (verification failed, code $2).$\r$\n$\r$\n\
         Websites using PrintPort will show one certificate warning the first time they connect — visit \
         https://127.0.0.1:8181 once and click through it, and it won't happen again."
     ${EndIf}
