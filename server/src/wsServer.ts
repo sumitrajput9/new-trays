@@ -110,8 +110,14 @@ export class PrintPortServer {
       p{color:#9aa7bd}</style></head><body>
       <h1>✅ PrintPort bridge is running</h1>
       <p>${this.connections.size} browser connection(s) currently active.</p>
-      <p>If you opened this page to trust PrintPort's local certificate, you can close this tab now —
+      <p>If you opened this page to trust PrintPort's local certificate, this window will close itself —
       pages using the PrintPort SDK will connect over <code>wss://127.0.0.1:${this.boundPort}</code> automatically.</p>
+      <script>
+        // Only auto-close if this was opened as a popup from another page's
+        // "trust the certificate" button — never auto-close a tab someone
+        // navigated to directly, that would be surprising.
+        if (window.opener) setTimeout(() => window.close(), 1500);
+      </script>
       </body></html>`
     );
   }

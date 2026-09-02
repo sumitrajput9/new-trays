@@ -40,7 +40,17 @@
     </p>
     <strong>Already installed? Two things this usually means instead:</strong>
     <ol>
-      <li><strong>Trust the local certificate</strong> — open <a href="https://127.0.0.1:8181" target="_blank" rel="noopener">https://127.0.0.1:8181</a> in a new tab, click <em>Advanced → Proceed</em>, then click Connect again. (Skip this if PrintPort was installed via its real installer — that trusts the certificate automatically.)</li>
+      <li>
+        <strong>Trust the local certificate</strong> — click the button below, click <em>Advanced → Proceed</em> in the
+        small window that opens, then it'll close itself and retry automatically.
+        (Skip this if PrintPort was installed via its real installer — that trusts the certificate automatically, and
+        this button won't be needed at all.)
+        <div style="margin-top:8px">
+          <button id="trustCertBtn" style="background:#223047;color:#e7ecf5;border:1px solid #4da3ff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px">
+            Trust PrintPort's certificate
+          </button>
+        </div>
+      </li>
       <li><strong>Make sure PrintPort is running</strong> — look for its icon in the system tray.</li>
     </ol>
   </div>
@@ -205,7 +215,7 @@ function log(line) {
   logEl.textContent = lines.join("\n");
 }
 
-connectBtn.addEventListener("click", async () => {
+async function attemptConnect() {
   statusText.textContent = "Connecting...";
   failedCard.style.display = "none";
   printCard.style.display = "none";
@@ -226,6 +236,29 @@ connectBtn.addEventListener("click", async () => {
     failedCard.style.display = "block";
     log(`Couldn't connect: ${err.message ?? err}`);
   }
+}
+
+connectBtn.addEventListener("click", attemptConnect);
+
+const trustCertBtn = document.getElementById("trustCertBtn");
+trustCertBtn.addEventListener("click", () => {
+  log("Opening PrintPort's certificate page in a small window...");
+  const popup = window.open("https://127.0.0.1:8181", "printport-trust", "width=520,height=420");
+  if (!popup) {
+    log("Popup blocked — allow popups for this site, or open https://127.0.0.1:8181 manually in a new tab.");
+    return;
+  }
+  // Cross-origin (this page vs. 127.0.0.1) means we can't see what's
+  // happening inside the popup, but we CAN see when it closes — the
+  // confirmation page PrintPort serves auto-closes itself once the user
+  // gets past the certificate warning, so closing is our signal to retry.
+  const poll = setInterval(() => {
+    if (popup.closed) {
+      clearInterval(poll);
+      log("Certificate window closed — retrying connection...");
+      attemptConnect();
+    }
+  }, 400);
 });
 
 printBtn.addEventListener("click", async () => {
