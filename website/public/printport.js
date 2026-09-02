@@ -77,9 +77,20 @@ export class PrintPort {
   async trustKey(fingerprint, publicKeyPem) {
     const stored = localStorage.getItem(PINNED_FINGERPRINT_STORAGE);
     if (stored && stored !== fingerprint) {
-      throw new PrintPortUntrustedError(
-        "PrintPort bridge identity changed since last visit. Clear this site's stored data if you just reinstalled PrintPort."
-      );
+      // A changed identity is the normal result of reinstalling PrintPort
+      // (a fresh install generates a fresh signing key), not an attack —
+      // ask once and re-pin on confirmation instead of dead-ending with
+      // "go clear your browser storage manually."
+      const accepted = this.opts.onIdentityChanged
+        ? await this.opts.onIdentityChanged()
+        : typeof confirm !== "undefined" &&
+          confirm(
+            "PrintPort's certificate has changed since your last visit to this site. " +
+              "This is expected if PrintPort was reinstalled. Trust the new one and continue?"
+          );
+      if (!accepted) {
+        throw new PrintPortUntrustedError("PrintPort bridge identity changed since last visit and the new one wasn't trusted.");
+      }
     }
     this.pinnedPublicKey = await importSpkiPem(publicKeyPem);
     localStorage.setItem(PINNED_FINGERPRINT_STORAGE, fingerprint);

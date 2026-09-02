@@ -56,6 +56,11 @@ export interface PrintPortOptions {
   /** Called if the bridge can't be reached — show your own "please install" UI,
    *  or leave unset to let the SDK show a built-in prompt. */
   onNotInstalled?: (downloadUrl: string) => void;
+  /** Called when the bridge's identity has changed since last visit (the
+   *  normal result of a PrintPort reinstall) — return/resolve true to trust
+   *  the new identity and continue, or false to refuse. Leave unset to let
+   *  the SDK ask via a native confirm() dialog. */
+  onIdentityChanged?: () => boolean | Promise<boolean>;
   downloadUrl?: string;
 }
 
@@ -91,6 +96,7 @@ export class PrintPort {
       host: options.host ?? "127.0.0.1",
       connectTimeoutMs: options.connectTimeoutMs ?? 2500,
       onNotInstalled: options.onNotInstalled ?? defaultNotInstalledPrompt,
+      onIdentityChanged: options.onIdentityChanged ?? defaultIdentityChangedPrompt,
       downloadUrl: options.downloadUrl ?? "https://printport.example.com/download",
     };
     // An explicit port pins to only that one; otherwise try the same
@@ -158,10 +164,20 @@ export class PrintPort {
   private async trustKey(fingerprint: string, publicKeyPem: string): Promise<void> {
     const stored = localStorage.getItem(PINNED_FINGERPRINT_STORAGE);
     if (stored && stored !== fingerprint) {
-      throw new PrintPortUntrustedError(
-        "PrintPort bridge identity changed since last visit. Refusing to trust it automatically — " +
-          "if you just reinstalled PrintPort, clear this site's stored data and reload."
-      );
+      // A changed identity is the normal, expected outcome of reinstalling
+      // PrintPort (a fresh install generates a fresh signing key) — the
+      // overwhelmingly common case, not an attack. Rather than dead-ending
+      // with instructions to go clear browser storage manually, ask once
+      // and let the SDK re-pin itself on confirmation. A custom
+      // onIdentityChanged callback can replace this native confirm() with
+      // in-page UI; declining still refuses to trust it, same as before.
+      const accepted = await this.opts.onIdentityChanged();
+
+      if (!accepted) {
+        throw new PrintPortUntrustedError(
+          "PrintPort bridge identity changed since last visit and the new one wasn't trusted."
+        );
+      }
     }
     this.pinnedPublicKey = await importSpkiPem(publicKeyPem);
     localStorage.setItem(PINNED_FINGERPRINT_STORAGE, fingerprint);
@@ -280,4 +296,12 @@ function defaultNotInstalledPrompt(downloadUrl: string): void {
     `<strong>PrintPort isn't running.</strong><br>Install the local print bridge to enable printing from this page.` +
     `<br><a href="${downloadUrl}" target="_blank" rel="noopener" style="color:#60a5fa">Download PrintPort</a>`;
   document.body.appendChild(banner);
+}
+
+function defaultIdentityChangedPrompt(): boolean {
+  if (typeof confirm === "undefined") return false;
+  return confirm(
+    "PrintPort's certificate has changed since your last visit to this site. " +
+      "This is expected if PrintPort was reinstalled. Trust the new one and continue?"
+  );
 }
