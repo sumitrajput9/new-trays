@@ -1,7 +1,7 @@
 import https from "https";
 import type { IncomingMessage as HttpRequest, ServerResponse } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { dialog } from "electron";
+import { app, dialog } from "electron";
 import { CertBundle } from "./certManager";
 import { signEnvelope } from "./signing";
 import { logger } from "./logger";
@@ -184,6 +184,12 @@ export class PrintPortServer {
           return this.send(ws, msg, {
             keyFingerprint: this.bundle.keyFingerprint,
             signingPublicKeyPem: this.bundle.signingPublicKeyPem,
+            // Lets a page (or a support conversation) confirm exactly which
+            // build a given machine is actually running, instead of
+            // guessing from a downloaded file's name or timestamp — this
+            // caused real confusion during testing (stale cached installers
+            // looking identical to fresh ones).
+            version: app.getVersion(),
           });
         }
 

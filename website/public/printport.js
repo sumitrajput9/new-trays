@@ -47,8 +47,12 @@ export class PrintPort {
       throw lastError;
     }
 
+    // Always fetch the version, even on an already-pinned reconnect, so a
+    // page can tell exactly which build is running rather than guessing
+    // from a downloaded file's name (a real source of confusion in testing).
+    const cert = await this.request("getCertificate", {}, true);
+    this.version = cert.version;
     if (!this.pinnedPublicKey) {
-      const cert = await this.request("getCertificate", {}, true);
       await this.trustKey(cert.keyFingerprint, cert.signingPublicKeyPem);
     }
   }

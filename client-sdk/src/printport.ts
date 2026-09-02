@@ -90,6 +90,8 @@ export class PrintPort {
   private pinnedPublicKey: CryptoKey | undefined;
   private opts: Omit<Required<PrintPortOptions>, "port">;
   private portCandidates: number[];
+  /** The connected bridge's version string, set once connect() resolves. */
+  version: string | undefined;
 
   constructor(options: PrintPortOptions = {}) {
     this.opts = {
@@ -123,12 +125,16 @@ export class PrintPort {
     }
 
     // Fetch + pin the signing key the first time we ever see this bridge.
+    // Always fetch the version, even on an already-pinned reconnect, so a
+    // page (or a support conversation) can always tell exactly which build
+    // is running rather than guessing from a downloaded file's name.
+    const cert = await this.request<{ keyFingerprint: string; signingPublicKeyPem: string; version?: string }>(
+      "getCertificate",
+      {},
+      /* skipVerify */ true
+    );
+    this.version = cert.version;
     if (!this.pinnedPublicKey) {
-      const cert = await this.request<{ keyFingerprint: string; signingPublicKeyPem: string }>(
-        "getCertificate",
-        {},
-        /* skipVerify */ true
-      );
       await this.trustKey(cert.keyFingerprint, cert.signingPublicKeyPem);
     }
   }
