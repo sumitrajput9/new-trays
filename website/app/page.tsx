@@ -11,8 +11,8 @@ export default function HomePage() {
           <h1>Print from the browser. To any printer, scale, or scanner.</h1>
           <p>
             PrintPort is a small background app that gives web pages a secure, signed local bridge to your
-            OS printers, thermal/label printers, and USB or serial devices — without a plugin, and without
-            asking the user to click through certificate warnings.
+            OS printers, thermal/label printers, and USB or serial devices — without a plugin, and with the
+            local certificate trusted automatically by the installer on almost every setup.
           </p>
           <div className="hero-actions">
             <Link href="/download" className="btn">
@@ -49,8 +49,12 @@ export default function HomePage() {
               <p>Lives in the system tray, starts with your OS, and shows how many pages are currently connected.</p>
             </div>
             <div className="card">
-              <h3>Cross-platform</h3>
-              <p>One codebase, native installers for Windows, macOS, and Linux.</p>
+              <h3>Cross-platform by design</h3>
+              <p>One codebase. Windows installer is built and tested today; macOS and Linux builds are on the roadmap.</p>
+            </div>
+            <div className="card">
+              <h3>Automatic port fallback</h3>
+              <p>If the default port is already taken by another local app, PrintPort tries a couple of fallback ports automatically instead of failing.</p>
             </div>
           </div>
         </section>

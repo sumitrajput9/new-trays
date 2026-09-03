@@ -16,9 +16,24 @@ function detectOS(): OS {
 }
 
 const RELEASES = {
-  windows: { label: "Windows", file: "PrintPort-Setup-1.0.0.exe", note: "Windows 10/11, 64-bit" },
-  mac: { label: "macOS", file: "PrintPort-1.0.0.pkg", note: "macOS 12+, Apple Silicon & Intel" },
-  linux: { label: "Linux", file: "PrintPort-1.0.0.AppImage", note: ".AppImage — also available as .deb" },
+  windows: {
+    label: "Windows",
+    file: "PrintPort-Setup-1.0.1.exe",
+    note: "Windows 10/11, 64-bit",
+    available: true,
+  },
+  mac: {
+    label: "macOS",
+    file: null,
+    note: "Not built yet — on the roadmap, see the docs page",
+    available: false,
+  },
+  linux: {
+    label: "Linux",
+    file: null,
+    note: "Not built yet — on the roadmap, see the docs page",
+    available: false,
+  },
 } as const;
 
 export default function DownloadPage() {
@@ -52,10 +67,16 @@ export default function DownloadPage() {
                   </h3>
                   <p>{release.note}</p>
                 </div>
-                {/* Replace with a real hosted binary URL before shipping. */}
-                <a className="btn" href={`/releases/${release.file}`}>
-                  Download for {release.label}
-                </a>
+                {release.available ? (
+                  // Replace with a real hosted binary URL before shipping.
+                  <a className="btn" href={`/releases/${release.file}`}>
+                    Download for {release.label}
+                  </a>
+                ) : (
+                  <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }}>
+                    Not available yet
+                  </button>
+                )}
               </div>
             );
           })}
@@ -65,13 +86,10 @@ export default function DownloadPage() {
           <h2>After installing</h2>
           <p className="lead">The installer registers auto-start and trusts PrintPort's local certificate for you.</p>
           <ul>
-            <li>Windows / macOS: the app launches once automatically to generate and trust its local certificate.</li>
-            <li>
-              Linux AppImage: certificate trust isn't wired into AppImage's install step (there isn't one) — run{" "}
-              <code>./PrintPort.AppImage --generate-cert-and-exit</code> once, then follow{" "}
-              <code>installers/linux/postinst.sh</code> manually, or use the <code>.deb</code> package instead.
-            </li>
+            <li>Windows: the app launches once automatically to generate and trust its local certificate — no manual step needed on most setups.</li>
             <li>Look for the PrintPort icon in your system tray — that confirms it's running.</li>
+            <li>If a website ever shows a one-time certificate prompt, it now opens as a small popup that closes itself and reconnects automatically once you click through it.</li>
+            <li>macOS and Linux builds are on the roadmap — see the <a href="/docs">docs page</a> for status.</li>
           </ul>
         </section>
       </main>
