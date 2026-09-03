@@ -119,7 +119,15 @@ await pp.connect();`}</code>
   "data": "...",               // utf8 text, or base64 if binary
   "encoding": "base64",        // optional, defaults to utf8
   "copies": 1,                 // optional
-  "connection": "tcp:192.168.1.50:9100"  // optional: bypass OS spooler
+  "connection": "tcp:192.168.1.50:9100",  // optional: bypass OS spooler
+
+  // The following only apply to type "pdf"/"html":
+  "duplex": "longEdge",        // optional: simplex | shortEdge | longEdge
+  "landscape": true,           // optional
+  "paperSize": "A4",           // optional: A3 | A4 | A5 | Legal | Letter | Tabloid
+  "color": false,              // optional: defaults to true
+  "scaleFactor": 100,          // optional: percentage
+  "margins": { "marginType": "none" }  // optional
 }`}</code></pre>
 
           <h3 style={{ fontSize: 16 }}>rawWrite</h3>
@@ -161,10 +169,6 @@ await pp.connect();`}</code>
             </thead>
             <tbody>
               <tr>
-                <td>Print options: duplex, orientation, paper size, margins, color</td>
-                <td>Currently only <code>copies</code> is exposed — the underlying print API already supports the rest</td>
-              </tr>
-              <tr>
                 <td>USB/HID raw read + control transfers</td>
                 <td>Today's USB/HID support is enumeration and HID-write only — needed for signature pads, card readers, and similar devices</td>
               </tr>
@@ -178,6 +182,10 @@ await pp.connect();`}</code>
               </tr>
             </tbody>
           </table>
+          <p style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 10 }}>
+            Print options (duplex, orientation, paper size, margins, color, scale) shipped — see the{" "}
+            <code>print</code> wire protocol above.
+          </p>
         </section>
       </main>
       <Footer />

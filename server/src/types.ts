@@ -12,6 +12,19 @@ export interface ListPrintersRequest {
   action: "listPrinters";
 }
 
+export type DuplexMode = "simplex" | "shortEdge" | "longEdge";
+
+export type PaperSize = "A3" | "A4" | "A5" | "Legal" | "Letter" | "Tabloid";
+
+export interface PrintMargins {
+  marginType?: "default" | "none" | "printableArea" | "custom";
+  /** Only used when marginType is "custom". In microns. */
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+}
+
 export interface PrintRequest extends ConnectionTarget {
   id: string;
   action: "print";
@@ -21,6 +34,15 @@ export interface PrintRequest extends ConnectionTarget {
   /** base64 encoded payload when type is raw/zpl/escpos and data contains binary */
   encoding?: "utf8" | "base64";
   copies?: number;
+  /** Only applies to type "pdf"/"html" — raw/zpl/escpos bytes control their own page setup. */
+  duplex?: DuplexMode;
+  landscape?: boolean;
+  paperSize?: PaperSize;
+  margins?: PrintMargins;
+  /** Defaults to true (color). Set false for grayscale/black & white. */
+  color?: boolean;
+  /** Percentage, e.g. 100 = actual size. */
+  scaleFactor?: number;
 }
 
 export interface RawWriteRequest {

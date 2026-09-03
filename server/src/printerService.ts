@@ -32,14 +32,32 @@ export async function listPrinters(): Promise<PrinterInfo[]> {
   }
 }
 
+/** Maps PrintPort's wire-protocol print options onto Electron's native
+ *  print() options — duplex/orientation/paper size/margins/color are all
+ *  already supported by Chromium's print pipeline, just not previously
+ *  exposed through PrintPort's own API. */
+function buildElectronPrintOptions(req: PrintRequest, printer: string, copies: number): Electron.WebContentsPrintOptions {
+  return {
+    silent: true,
+    deviceName: printer,
+    copies,
+    landscape: req.landscape,
+    color: req.color,
+    scaleFactor: req.scaleFactor,
+    duplexMode: req.duplex,
+    pageSize: req.paperSize,
+    margins: req.margins,
+  };
+}
+
 /** Renders HTML (or a PDF's built-in viewer) in a hidden window and sends it
  *  to a standard printer via the OS print spooler. */
-async function printRendered(html: string, printer: string, copies = 1): Promise<void> {
+async function printRendered(html: string, req: PrintRequest, printer: string, copies = 1): Promise<void> {
   const win = new BrowserWindow({ show: false, webPreferences: { plugins: true } });
   try {
     await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
     await new Promise<void>((resolve, reject) => {
-      win.webContents.print({ silent: true, deviceName: printer, copies }, (ok, failureReason) => {
+      win.webContents.print(buildElectronPrintOptions(req, printer, copies), (ok, failureReason) => {
         if (ok) resolve();
         else reject(new Error(failureReason || "print failed"));
       });
@@ -49,14 +67,14 @@ async function printRendered(html: string, printer: string, copies = 1): Promise
   }
 }
 
-async function printPdfBase64(base64: string, printer: string, copies = 1): Promise<void> {
+async function printPdfBase64(base64: string, req: PrintRequest, printer: string, copies = 1): Promise<void> {
   const tmp = path.join(os.tmpdir(), `printport-${Date.now()}.pdf`);
   fs.writeFileSync(tmp, Buffer.from(base64, "base64"));
   const win = new BrowserWindow({ show: false, webPreferences: { plugins: true } });
   try {
     await win.loadURL(`file://${tmp.replace(/\\/g, "/")}`);
     await new Promise<void>((resolve, reject) => {
-      win.webContents.print({ silent: true, deviceName: printer, copies }, (ok, failureReason) => {
+      win.webContents.print(buildElectronPrintOptions(req, printer, copies), (ok, failureReason) => {
         if (ok) resolve();
         else reject(new Error(failureReason || "print failed"));
       });
@@ -93,9 +111,9 @@ export async function handlePrint(req: PrintRequest): Promise<void> {
 
   switch (req.type) {
     case "html":
-      return printRendered(req.data, req.printer, copies);
+      return printRendered(req.data, req, req.printer, copies);
     case "pdf":
-      return printPdfBase64(req.data, req.printer, copies);
+      return printPdfBase64(req.data, req, req.printer, copies);
     case "raw":
     case "zpl":
     case "escpos": {

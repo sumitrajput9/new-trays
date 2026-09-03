@@ -29,6 +29,18 @@ export interface DeviceInfo {
   serialNumber?: string;
 }
 
+export type DuplexMode = "simplex" | "shortEdge" | "longEdge";
+export type PaperSize = "A3" | "A4" | "A5" | "Legal" | "Letter" | "Tabloid";
+
+export interface PrintMargins {
+  marginType?: "default" | "none" | "printableArea" | "custom";
+  /** Only used when marginType is "custom". In microns. */
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+}
+
 export interface PrintOptions {
   type: PrintDataType;
   encoding?: "utf8" | "base64";
@@ -36,6 +48,16 @@ export interface PrintOptions {
   /** For raw/zpl/escpos: bypass the OS spooler and talk to the printer
    *  directly, e.g. "tcp:192.168.1.50:9100" or "serial:COM3". */
   connection?: string;
+  /** The following only apply to type "pdf"/"html" — raw/zpl/escpos bytes
+   *  control their own page setup. */
+  duplex?: DuplexMode;
+  landscape?: boolean;
+  paperSize?: PaperSize;
+  margins?: PrintMargins;
+  /** Defaults to true (color). Set false for grayscale/black & white. */
+  color?: boolean;
+  /** Percentage, e.g. 100 = actual size. */
+  scaleFactor?: number;
 }
 
 /**

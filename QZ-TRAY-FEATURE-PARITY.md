@@ -14,12 +14,13 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 | Print raster image / canvas ("pixel" printing) | ✅ | ❌ | Not implemented — QZ Tray can print a canvas/image object directly |
 | Silent printing (no OS dialog) | ✅ | ✅ | Core requirement, already working |
 | Copies | ✅ | ✅ | `options.copies` |
-| Duplex (double-sided) | ✅ | ❌ | Electron's `webContents.print()` supports `duplexMode` — just needs wiring into `PrintOptions` |
-| Orientation (portrait/landscape) | ✅ | ❌ | Electron supports `landscape: boolean` — needs wiring |
-| Paper size | ✅ | ❌ | Electron supports `pageSize` — needs wiring |
-| Margins | ✅ | ❌ | Electron supports `margins` — needs wiring |
-| Color / grayscale | ✅ | ❌ | Electron supports `color: boolean` — needs wiring |
-| Scale / density (DPI) | ✅ | ❌ | Not yet exposed |
+| Duplex (double-sided) | ✅ | ✅ | `options.duplex: "simplex" \| "shortEdge" \| "longEdge"` |
+| Orientation (portrait/landscape) | ✅ | ✅ | `options.landscape: boolean` |
+| Paper size | ✅ | ✅ | `options.paperSize: "A3" \| "A4" \| "A5" \| "Legal" \| "Letter" \| "Tabloid"` |
+| Margins | ✅ | ✅ | `options.margins: { marginType, top, bottom, left, right }` |
+| Color / grayscale | ✅ | ✅ | `options.color: boolean` |
+| Scale factor | ✅ | ✅ | `options.scaleFactor: number` (percentage) |
+| Density (DPI) | ✅ | ❌ | Not yet exposed — Electron's `dpi` option isn't wired in |
 | Print job status callback (queued/printing/done) | ✅ | ❌ | PrintPort currently only reports success/failure of the *send*, not the actual print job's OS-level lifecycle |
 
 **Verdict:** core silent printing is solid; the print *options* surface needs to grow. This is the highest-value, lowest-effort gap to close — it's config plumbing, not new architecture.
@@ -91,8 +92,8 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 
 ## Priority recommendation for what to build next
 
-1. **Print options plumbing** (duplex, orientation, paper size, margins, color) — small effort, directly visible value, no new dependencies
-2. **USB/HID raw read/write** — the biggest functional gap; needed for anything beyond basic printers (card readers, pole displays, signature pads)
+1. ~~**Print options plumbing** (duplex, orientation, paper size, margins, color)~~ — **done**
+2. **USB/HID raw read/write** — the biggest remaining functional gap; needed for anything beyond basic printers (card readers, pole displays, signature pads)
 3. **Serial port config (data bits/parity/flow control)** — small effort, needed for less-common scale/scanner protocols
 4. **macOS/Linux installer builds** — needed before any non-Windows teammate/customer can use PrintPort at all
 5. Everything else (file I/O, network device info, persistent serial streaming, real CA certificate) — lower priority unless a specific use case demands it
