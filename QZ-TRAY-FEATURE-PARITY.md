@@ -83,9 +83,9 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 
 | Feature | QZ Tray | PrintPort | Notes |
 |---|---|---|---|
-| Windows installer | ✅ | ✅ | Built, tested across multiple machines today |
-| macOS installer | ✅ | ⚠️ | Config exists (`server/package.json` build.mac/pkg), never actually built or tested |
-| Linux installer (.deb/.AppImage) | ✅ | ⚠️ | Config exists, never actually built or tested |
+| Windows installer | ✅ | ✅ | Built, tested end-to-end across multiple machines today |
+| macOS installer | ✅ | ⚠️ | Config exists (`server/package.json` build.mac/pkg), never actually built — macOS's own packaging tools (pkgbuild, hdiutil, codesign) only exist on macOS itself, can't be cross-built |
+| Linux installer (.deb/.AppImage) | ✅ | ⚠️ | Both built successfully via a real Linux container (Docker), file formats verified (valid ar archive / ELF headers) — not yet run on actual Linux hardware, so tray icon, cert auto-trust, and printing are unverified there |
 | Auto-start on login | ✅ | ✅ | |
 | Tray icon with status | ✅ | ✅ | Shows active connections + bound port |
 | Code-signed installers (no SmartScreen/Gatekeeper warning) | ✅ | ❌ | Needs a purchased Windows Authenticode cert + Apple Developer ID — can't be generated, only purchased/enrolled |
@@ -95,7 +95,8 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 1. ~~**Print options plumbing** (duplex, orientation, paper size, margins, color)~~ — **done**
 2. ~~**USB/HID raw read/write + control transfers**~~ — **done**
 3. ~~**Serial port config (data bits/parity/flow control)**~~ — **done**
-4. **macOS/Linux installer builds** — needed before any non-Windows teammate/customer can use PrintPort at all; the only remaining item from the original priority list
-5. Everything else (file I/O, network device info, persistent serial streaming, real CA certificate) — lower priority unless a specific use case demands it
+4. ~~**Linux installer build (.deb/.AppImage)**~~ — **built** via Docker (electronuserland/builder image), file formats verified; still needs to actually be run on a Linux machine to confirm the tray/cert/print flow works there
+5. **macOS installer build** — the one item that's a genuine hard blocker without access to a Mac; can't be cross-built or containerized the way Linux was, since Apple's packaging tools only run on macOS
+6. Everything else (file I/O, network device info, persistent serial streaming, real CA certificate) — lower priority unless a specific use case demands it
 
 Say which of these to start on and I'll scope and build it the same way as today's work: implement, verify, commit.

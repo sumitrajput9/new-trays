@@ -3,6 +3,7 @@
   "version": "1.2.0",
   "description": "PrintPort background bridge — Electron tray app + local WSS server for printer/serial/USB access from the browser.",
   "main": "dist/main.js",
+  "homepage": "https://printport.example.com",
   "scripts": {
     "dev": "tsc -w -p tsconfig.json & electron dist/main.js",
     "build": "tsc -p tsconfig.json",
@@ -78,6 +79,9 @@
       "afterInstall": "../installers/linux/postinst.sh"
     }
   },
-  "author": "PrintPort",
+  "author": {
+    "name": "PrintPort",
+    "email": "support@printport.example.com"
+  },
   "license": "UNLICENSED"
 }

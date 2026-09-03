@@ -21,20 +21,26 @@ const RELEASES = {
     file: "PrintPort-Setup-1.2.0.exe",
     note: "Windows 10/11, 64-bit",
     available: true,
+    altFile: null as string | null,
+    altLabel: null as string | null,
   },
   mac: {
     label: "macOS",
-    file: null,
+    file: null as string | null,
     note: "Not built yet — on the roadmap, see the docs page",
     available: false,
+    altFile: null as string | null,
+    altLabel: null as string | null,
   },
   linux: {
     label: "Linux",
-    file: null,
-    note: "Not built yet — on the roadmap, see the docs page",
-    available: false,
+    file: "PrintPort-1.2.0.AppImage" as string | null,
+    note: "AppImage, x64 — also available as .deb",
+    available: true,
+    altFile: "printport-server_1.2.0_amd64.deb" as string | null,
+    altLabel: ".deb (Debian/Ubuntu)" as string | null,
   },
-} as const;
+};
 
 export default function DownloadPage() {
   const [os, setOs] = useState<OS>("unknown");
@@ -68,10 +74,17 @@ export default function DownloadPage() {
                   <p>{release.note}</p>
                 </div>
                 {release.available ? (
-                  // Replace with a real hosted binary URL before shipping.
-                  <a className="btn" href={`/releases/${release.file}`}>
-                    Download for {release.label}
-                  </a>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {/* Replace with a real hosted binary URL before shipping. */}
+                    <a className="btn" href={`/releases/${release.file}`}>
+                      Download for {release.label}
+                    </a>
+                    {release.altFile && (
+                      <a className="btn-ghost" href={`/releases/${release.altFile}`}>
+                        {release.altLabel}
+                      </a>
+                    )}
+                  </div>
                 ) : (
                   <button className="btn" disabled style={{ opacity: 0.5, cursor: "not-allowed" }}>
                     Not available yet
@@ -87,9 +100,15 @@ export default function DownloadPage() {
           <p className="lead">The installer registers auto-start and trusts PrintPort's local certificate for you.</p>
           <ul>
             <li>Windows: the app launches once automatically to generate and trust its local certificate — no manual step needed on most setups.</li>
+            <li>
+              Linux: the <code>.deb</code> package's post-install script does this for you automatically. The
+              <code>.AppImage</code> has no install step to hook into — run{" "}
+              <code>./PrintPort-1.2.0.AppImage --generate-cert-and-exit</code> once, then follow{" "}
+              <code>installers/linux/postinst.sh</code> manually (or just use the <code>.deb</code> instead).
+            </li>
             <li>Look for the PrintPort icon in your system tray — that confirms it's running.</li>
             <li>If a website ever shows a one-time certificate prompt, it now opens as a small popup that closes itself and reconnects automatically once you click through it.</li>
-            <li>macOS and Linux builds are on the roadmap — see the <a href="/docs">docs page</a> for status.</li>
+            <li>macOS is still on the roadmap — see the <a href="/docs">docs page</a> for status.</li>
           </ul>
         </section>
       </main>

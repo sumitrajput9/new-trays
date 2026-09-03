@@ -191,21 +191,29 @@ await pp.connect();`}</code>
         <section>
           <h2>Roadmap</h2>
           <p className="lead">
-            PrintPort now covers essentially the full QZ Tray feature set on Windows — silent printing with full
-            page-setup options, raw ESC/POS/ZPL, and USB/HID/serial device I/O including control transfers and
-            configurable serial parameters. One gap remains:
+            PrintPort now covers essentially the full QZ Tray feature set — silent printing with full page-setup
+            options, raw ESC/POS/ZPL, and USB/HID/serial device I/O including control transfers and configurable
+            serial parameters. On the platform side:
           </p>
           <table>
             <thead>
               <tr>
-                <th>Coming next</th>
-                <th>Why</th>
+                <th>Status</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>macOS and Linux installers</td>
-                <td>Windows is built and tested; the other two are scaffolded but not yet produced</td>
+                <td>Windows</td>
+                <td>Built and tested end-to-end across multiple real machines</td>
+              </tr>
+              <tr>
+                <td>Linux (.deb / .AppImage)</td>
+                <td>Both built successfully (via a Linux container) and file-format verified — not yet run on real Linux hardware, so the tray/certificate/print flow there is unconfirmed</td>
+              </tr>
+              <tr>
+                <td>macOS</td>
+                <td>Not built — Apple's own packaging tools only run on macOS itself, so this needs access to real Mac hardware</td>
               </tr>
             </tbody>
           </table>
