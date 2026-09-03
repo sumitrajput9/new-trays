@@ -85,7 +85,7 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 |---|---|---|---|
 | Windows installer | ✅ | ✅ | Built, tested end-to-end across multiple machines today |
 | macOS installer | ✅ | ⚠️ | Config exists (`server/package.json` build.mac/pkg), never actually built — macOS's own packaging tools (pkgbuild, hdiutil, codesign) only exist on macOS itself, can't be cross-built |
-| Linux installer (.deb/.AppImage) | ✅ | ⚠️ | Both built successfully via a real Linux container (Docker), file formats verified (valid ar archive / ELF headers) — not yet run on actual Linux hardware, so tray icon, cert auto-trust, and printing are unverified there |
+| Linux installer (.deb/.AppImage) | ✅ | ✅ | Built via Docker and actually run (headless, in-container): app launches stably, generates its certificate at the correct `~/.config/PrintPort` path, binds the WSS port, serves the HTTP confirmation page, and a real WebSocket client completed a full signed `listPrinters` round-trip. Not yet verified on a real desktop: the system tray icon (needs a real tray protocol like AppIndicator, not present in a headless container) and the `.deb` postinstall script's certificate import |
 | Auto-start on login | ✅ | ✅ | |
 | Tray icon with status | ✅ | ✅ | Shows active connections + bound port |
 | Code-signed installers (no SmartScreen/Gatekeeper warning) | ✅ | ❌ | Needs a purchased Windows Authenticode cert + Apple Developer ID — can't be generated, only purchased/enrolled |
@@ -95,7 +95,7 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 1. ~~**Print options plumbing** (duplex, orientation, paper size, margins, color)~~ — **done**
 2. ~~**USB/HID raw read/write + control transfers**~~ — **done**
 3. ~~**Serial port config (data bits/parity/flow control)**~~ — **done**
-4. ~~**Linux installer build (.deb/.AppImage)**~~ — **built** via Docker (electronuserland/builder image), file formats verified; still needs to actually be run on a Linux machine to confirm the tray/cert/print flow works there
+4. ~~**Linux installer build (.deb/.AppImage)**~~ — **built and functionally verified** via Docker: app launch, certificate generation, WSS binding, and a full signed WebSocket round-trip all confirmed working headlessly in-container. Only the system tray icon and the `.deb` postinstall script remain unverified on a real desktop
 5. **macOS installer build** — the one item that's a genuine hard blocker without access to a Mac; can't be cross-built or containerized the way Linux was, since Apple's packaging tools only run on macOS
 6. Everything else (file I/O, network device info, persistent serial streaming, real CA certificate) — lower priority unless a specific use case demands it
 

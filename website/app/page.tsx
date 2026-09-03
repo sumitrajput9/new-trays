@@ -50,7 +50,7 @@ export default function HomePage() {
             </div>
             <div className="card">
               <h3>Cross-platform by design</h3>
-              <p>One codebase. Windows is built and tested end-to-end; Linux (.deb/.AppImage) is built and verified but not yet run on real hardware. macOS is on the roadmap.</p>
+              <p>One codebase. Windows and Linux (.deb/.AppImage) are both built and functionally verified end-to-end. macOS is on the roadmap.</p>
             </div>
             <div className="card">
               <h3>Automatic port fallback</h3>

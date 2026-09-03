@@ -209,7 +209,7 @@ await pp.connect();`}</code>
               </tr>
               <tr>
                 <td>Linux (.deb / .AppImage)</td>
-                <td>Both built successfully (via a Linux container) and file-format verified — not yet run on real Linux hardware, so the tray/certificate/print flow there is unconfirmed</td>
+                <td>Built and functionally verified in a real Linux container: launches, generates its certificate, binds the bridge, and a real WebSocket client completed a full signed round-trip. Only the desktop tray icon and the .deb installer's certificate-import script remain unverified on real hardware</td>
               </tr>
               <tr>
                 <td>macOS</td>
