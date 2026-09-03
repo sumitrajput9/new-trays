@@ -60,7 +60,8 @@ export default function DownloadPage() {
           <p className="lead">
             {detected
               ? `We detected ${detected.label}. Grab the right build below, or pick another OS.`
-              : "Pick your operating system below."}
+              : "Pick your operating system below."}{" "}
+            <span className="badge">v1.2.0</span>
           </p>
 
           {(Object.keys(RELEASES) as (keyof typeof RELEASES)[]).map((key) => {

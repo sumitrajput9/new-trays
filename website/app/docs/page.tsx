@@ -12,9 +12,16 @@ export default function DocsPage() {
             PrintTrays exposes a JSON-over-WebSocket protocol on <code>wss://127.0.0.1:8181</code> (with automatic
             fallback ports), plus a thin client SDK that wraps it.
           </p>
+          <nav aria-label="On this page" style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", fontSize: 14 }}>
+            <a href="#getting-started">Getting started</a>
+            <a href="#client-sdk">Client SDK</a>
+            <a href="#wire-protocol">Wire protocol</a>
+            <a href="#trust-signing">Trust &amp; signing</a>
+            <a href="#roadmap">Roadmap</a>
+          </nav>
         </section>
 
-        <section>
+        <section id="getting-started">
           <h2>Getting started</h2>
           <p className="lead">Four steps, start to finish.</p>
           <ol style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.9 }}>
@@ -46,7 +53,7 @@ await pp.print(printers[0].name, "<h1>Hello</h1>", { type: "html" });`}</code></
           </ol>
         </section>
 
-        <section>
+        <section id="client-sdk">
           <h2>Client SDK</h2>
           <pre>
             <code>{`import { PrintTrays } from "./printtrays.js";
@@ -106,7 +113,7 @@ await pp.connect();`}</code>
           </table>
         </section>
 
-        <section>
+        <section id="wire-protocol">
           <h2>Wire protocol</h2>
           <p className="lead">Every request is a single JSON object with an <code>id</code> and <code>action</code>; every response mirrors that <code>id</code>.</p>
 
@@ -178,7 +185,7 @@ await pp.connect();`}</code>
           <pre><code>{`{ "id": "abc", "action": "listDevices", "type": "serial" }  // usb | serial | hid`}</code></pre>
         </section>
 
-        <section>
+        <section id="trust-signing">
           <h2>Trust &amp; signing</h2>
           <p className="lead">How PrintTrays avoids QZ Tray-style repeated certificate prompts.</p>
           <ul>
@@ -188,7 +195,7 @@ await pp.connect();`}</code>
           </ul>
         </section>
 
-        <section>
+        <section id="roadmap">
           <h2>Roadmap</h2>
           <p className="lead">
             PrintTrays now covers essentially the full QZ Tray feature set — silent printing with full page-setup
