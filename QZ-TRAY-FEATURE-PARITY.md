@@ -84,7 +84,7 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 | Feature | QZ Tray | PrintPort | Notes |
 |---|---|---|---|
 | Windows installer | ✅ | ✅ | Built, tested end-to-end across multiple machines today |
-| macOS installer | ✅ | ⚠️ | Config exists (`server/package.json` build.mac/pkg), never actually built — macOS's own packaging tools (pkgbuild, hdiutil, codesign) only exist on macOS itself, can't be cross-built |
+| macOS installer | ✅ | ⚠️ | Confirmed hard-blocked, not just assumed: `.pkg` fails on `spawn productbuild ENOENT` (Apple's Installer-framework binary, Darwin-only); `.dmg` fails because `dmg-license` — a dependency electron-builder's DMG code unconditionally loads — declares `"os": ["darwin"]` in its own package.json, so npm refuses to even install it elsewhere (`EBADPLATFORM`). The raw unpacked `.app` bundle *does* build fine (no installer tooling needed for that), but unsigned/unnotarized/Intel-only isn't worth shipping — real macOS or Apple CI access is required for a proper installer |
 | Linux installer (.deb/.AppImage) | ✅ | ✅ | Built via Docker and actually run (headless, in-container): app launches stably, generates its certificate at the correct `~/.config/PrintPort` path, binds the WSS port, serves the HTTP confirmation page, and a real WebSocket client completed a full signed `listPrinters` round-trip. Not yet verified on a real desktop: the system tray icon (needs a real tray protocol like AppIndicator, not present in a headless container) and the `.deb` postinstall script's certificate import |
 | Auto-start on login | ✅ | ✅ | |
 | Tray icon with status | ✅ | ✅ | Shows active connections + bound port |
@@ -96,7 +96,7 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 2. ~~**USB/HID raw read/write + control transfers**~~ — **done**
 3. ~~**Serial port config (data bits/parity/flow control)**~~ — **done**
 4. ~~**Linux installer build (.deb/.AppImage)**~~ — **built and functionally verified** via Docker: app launch, certificate generation, WSS binding, and a full signed WebSocket round-trip all confirmed working headlessly in-container. Only the system tray icon and the `.deb` postinstall script remain unverified on a real desktop
-5. **macOS installer build** — the one item that's a genuine hard blocker without access to a Mac; can't be cross-built or containerized the way Linux was, since Apple's packaging tools only run on macOS
+5. **macOS installer build** — confirmed genuine hard blocker (see above), not an assumption: both `.pkg` and `.dmg` fail on Apple-only tooling that has no Linux/Windows equivalent and can't be worked around the way Linux's `fpm` dependency was. Needs real Mac hardware or a cloud Mac CI runner (e.g. GitHub Actions macOS runners) to proceed — and a paid Apple Developer account for the code signing + notarization a real release would need anyway
 6. Everything else (file I/O, network device info, persistent serial streaming, real CA certificate) — lower priority unless a specific use case demands it
 
 Say which of these to start on and I'll scope and build it the same way as today's work: implement, verify, commit.

@@ -213,7 +213,7 @@ await pp.connect();`}</code>
               </tr>
               <tr>
                 <td>macOS</td>
-                <td>Not built — Apple's own packaging tools only run on macOS itself, so this needs access to real Mac hardware</td>
+                <td>Confirmed hard-blocked (not assumed): .pkg fails on a missing Apple-only binary (productbuild), and .dmg's dependency explicitly restricts itself to macOS at the npm level. Needs real Mac hardware or cloud Mac CI to proceed</td>
               </tr>
             </tbody>
           </table>
