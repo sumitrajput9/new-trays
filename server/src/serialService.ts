@@ -1,6 +1,24 @@
 import { SerialPort } from "serialport";
 import { DeviceInfo } from "./types";
 
+export type SerialParity = "none" | "even" | "mark" | "odd" | "space";
+
+export interface SerialWriteOptions {
+  baudRate?: number;
+  readTimeoutMs?: number;
+  /** Defaults to 8. */
+  dataBits?: 5 | 6 | 7 | 8;
+  /** Defaults to 1. */
+  stopBits?: 1 | 1.5 | 2;
+  /** Defaults to "none". Needed for some less-common scale/scanner protocols. */
+  parity?: SerialParity;
+  /** Hardware (RTS/CTS) flow control. Defaults to false. */
+  rtscts?: boolean;
+  /** Software (XON/XOFF) flow control. Defaults to false. */
+  xon?: boolean;
+  xoff?: boolean;
+}
+
 export async function listSerialDevices(): Promise<DeviceInfo[]> {
   const ports = await SerialPort.list();
   return ports.map((p) => ({
@@ -19,14 +37,30 @@ export async function listSerialDevices(): Promise<DeviceInfo[]> {
  * Many scale/scanner protocols are request/response over serial, so this
  * covers the common case without requiring a persistent subscription.
  */
-export function serialRawWrite(
-  portPath: string,
-  bytes: Buffer,
-  baudRate = 9600,
-  readTimeoutMs = 300
-): Promise<Buffer> {
+export function serialRawWrite(portPath: string, bytes: Buffer, options: SerialWriteOptions = {}): Promise<Buffer> {
+  const {
+    baudRate = 9600,
+    readTimeoutMs = 300,
+    dataBits = 8,
+    stopBits = 1,
+    parity = "none",
+    rtscts = false,
+    xon = false,
+    xoff = false,
+  } = options;
+
   return new Promise((resolve, reject) => {
-    const port = new SerialPort({ path: portPath, baudRate, autoOpen: false });
+    const port = new SerialPort({
+      path: portPath,
+      baudRate,
+      dataBits,
+      stopBits,
+      parity,
+      rtscts,
+      xon,
+      xoff,
+      autoOpen: false,
+    });
     const chunks: Buffer[] = [];
 
     port.open((err) => {

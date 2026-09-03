@@ -41,7 +41,7 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 | List serial ports | ✅ | ✅ | |
 | Open/write/close | ✅ | ✅ | |
 | Configurable baud rate | ✅ | ✅ | |
-| Configurable data bits / stop bits / parity / flow control | ✅ | ❌ | PrintPort only exposes baud rate today |
+| Configurable data bits / stop bits / parity / flow control | ✅ | ✅ | `sendRaw(port, bytes, { dataBits, stopBits, parity, rtscts, xon, xoff })` |
 | Persistent open connection with streamed data events | ✅ | ❌ | PrintPort's `rawWrite` is request/response only (write, wait briefly, capture reply) — no long-lived subscription for a device that streams continuously (e.g. a scale broadcasting weight) |
 
 ## 4. USB & HID
@@ -50,12 +50,12 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 |---|---|---|---|
 | List USB devices | ✅ | ✅ | |
 | List HID devices | ✅ | ✅ | |
-| Claim/release USB interface | ✅ | ❌ | |
-| Raw USB read / write / control transfer | ✅ | ❌ | Enumeration exists (`usb` package already a dependency); read/write is unimplemented |
+| Claim/release USB interface | ✅ | ✅ | Handled internally by `sendRaw("usb:vid:pid:endpoint", ...)` |
+| Raw USB read / write / control transfer | ✅ | ✅ | `sendRaw("usb:vid:pid:endpoint", ...)` for bulk I/O; `usbControlTransfer()` for control transfers |
 | HID write | ✅ | ✅ | |
-| HID read | ✅ | ❌ | Write-only today |
+| HID read | ✅ | ✅ | `sendRaw("hid:<path>", "", { readTimeoutMs })` |
 
-**Verdict:** this is the single biggest real gap. USB/HID device *control*, not just listing, is what QZ Tray is often used for (signature pads, card readers, kiosks).
+**Verdict:** closed. Raw USB bulk I/O, control transfers, and HID read all now work via `sendRaw()` and `usbControlTransfer()` — verified against the actual `usb`/`node-hid` package APIs (`InEndpoint`/`OutEndpoint`/`HIDAsync`), not assumed.
 
 ## 5. File system access
 
@@ -93,9 +93,9 @@ Status key: ✅ Done · ⚠️ Partial · ❌ Not started
 ## Priority recommendation for what to build next
 
 1. ~~**Print options plumbing** (duplex, orientation, paper size, margins, color)~~ — **done**
-2. **USB/HID raw read/write** — the biggest remaining functional gap; needed for anything beyond basic printers (card readers, pole displays, signature pads)
-3. **Serial port config (data bits/parity/flow control)** — small effort, needed for less-common scale/scanner protocols
-4. **macOS/Linux installer builds** — needed before any non-Windows teammate/customer can use PrintPort at all
+2. ~~**USB/HID raw read/write + control transfers**~~ — **done**
+3. ~~**Serial port config (data bits/parity/flow control)**~~ — **done**
+4. **macOS/Linux installer builds** — needed before any non-Windows teammate/customer can use PrintPort at all; the only remaining item from the original priority list
 5. Everything else (file I/O, network device info, persistent serial streaming, real CA certificate) — lower priority unless a specific use case demands it
 
 Say which of these to start on and I'll scope and build it the same way as today's work: implement, verify, commit.

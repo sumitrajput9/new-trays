@@ -7,7 +7,15 @@ import { signEnvelope } from "./signing";
 import { logger } from "./logger";
 import { listPrinters, handlePrint } from "./printerService";
 import { listSerialDevices, serialRawWrite } from "./serialService";
-import { listUsbDevices, listHidDevices, hidRawWrite } from "./usbHidService";
+import {
+  listUsbDevices,
+  listHidDevices,
+  hidRawWrite,
+  hidRawRead,
+  usbRawWrite,
+  usbRawRead,
+  usbControlTransfer,
+} from "./usbHidService";
 import { sendRawBytes, decodePayload } from "./rawPrint";
 import {
   IncomingMessage,
@@ -165,17 +173,52 @@ export class PrintPortServer {
 
         case "rawWrite": {
           const bytes = decodePayload(msg.bytes, msg.encoding ?? "utf8");
-          let response: Buffer;
+          let response: Buffer = Buffer.alloc(0);
+
           if (msg.port.startsWith("hid:")) {
-            await hidRawWrite(msg.port.slice(4), bytes);
-            response = Buffer.alloc(0);
+            const devicePath = msg.port.slice(4);
+            if (bytes.length > 0) await hidRawWrite(devicePath, bytes);
+            if (msg.readTimeoutMs) response = await hidRawRead(devicePath, msg.readTimeoutMs);
+          } else if (msg.port.startsWith("usb:")) {
+            const [vendorIdHex, productIdHex, endpointStr] = msg.port.slice(4).split(":");
+            const vendorId = parseInt(vendorIdHex, 16);
+            const productId = parseInt(productIdHex, 16);
+            const endpoint = Number(endpointStr);
+            if (bytes.length > 0) await usbRawWrite(vendorId, productId, endpoint, bytes);
+            if (msg.readTimeoutMs) {
+              response = await usbRawRead(vendorId, productId, endpoint, msg.readLength ?? 64, msg.readTimeoutMs);
+            }
           } else if (msg.port.startsWith("tcp:")) {
             await sendRawBytes(msg.port, bytes);
-            response = Buffer.alloc(0);
           } else {
-            response = await serialRawWrite(msg.port, bytes, msg.baudRate ?? 9600);
+            response = await serialRawWrite(msg.port, bytes, {
+              baudRate: msg.baudRate,
+              readTimeoutMs: msg.readTimeoutMs,
+              dataBits: msg.dataBits,
+              stopBits: msg.stopBits,
+              parity: msg.parity,
+              rtscts: msg.rtscts,
+              xon: msg.xon,
+              xoff: msg.xoff,
+            });
           }
+
           return this.send(ws, msg, { bytesWritten: bytes.length, response: response.toString("base64") });
+        }
+
+        case "usbControlTransfer": {
+          const dataOrLength =
+            msg.data !== undefined ? decodePayload(msg.data, "base64") : msg.readLength ?? 0;
+          const result = await usbControlTransfer(
+            msg.vendorId,
+            msg.productId,
+            msg.bmRequestType,
+            msg.bRequest,
+            msg.wValue,
+            msg.wIndex,
+            dataOrLength
+          );
+          return this.send(ws, msg, { response: result.toString("base64") });
         }
 
         case "listDevices": {

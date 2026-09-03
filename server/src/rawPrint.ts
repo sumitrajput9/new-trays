@@ -1,6 +1,7 @@
 import net from "net";
 import { SerialPort } from "serialport";
 import { logger } from "./logger";
+import { usbRawWrite } from "./usbHidService";
 
 /**
  * Sends raw bytes directly to a printer connection string, bypassing the OS
@@ -8,8 +9,9 @@ import { logger } from "./logger";
  * ESC/POS or ZPL over a raw socket.
  *
  * Supported connection strings:
- *   tcp:<host>:<port>   e.g. "tcp:192.168.1.50:9100"  (standard raw-print port)
- *   serial:<port>       e.g. "serial:COM3" or "serial:/dev/ttyUSB0"
+ *   tcp:<host>:<port>              e.g. "tcp:192.168.1.50:9100"  (standard raw-print port)
+ *   serial:<port>                  e.g. "serial:COM3" or "serial:/dev/ttyUSB0"
+ *   usb:<vendorIdHex>:<productIdHex>:<endpointAddress>   e.g. "usb:0483:5750:1"
  */
 export async function sendRawBytes(connection: string, bytes: Buffer): Promise<void> {
   const [scheme, ...rest] = connection.split(":");
@@ -23,6 +25,11 @@ export async function sendRawBytes(connection: string, bytes: Buffer): Promise<v
   if (scheme === "serial") {
     const portPath = rest.join(":");
     return sendOverSerial(portPath, bytes);
+  }
+
+  if (scheme === "usb") {
+    const [vendorIdHex, productIdHex, endpointStr] = rest;
+    return usbRawWrite(parseInt(vendorIdHex, 16), parseInt(productIdHex, 16), Number(endpointStr), bytes);
   }
 
   throw new Error(`Unsupported connection string: ${connection}`);

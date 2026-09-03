@@ -224,13 +224,55 @@ export class PrintPort {
     return this.request("print", { printer, data, ...options });
   }
 
+  /**
+   * Writes bytes to a serial/HID/USB/TCP target. `port` is one of:
+   * "COM3" / "/dev/ttyUSB0" (serial), "tcp:host:port", "hid:<path>", or
+   * "usb:<vendorIdHex>:<productIdHex>:<endpointAddress>".
+   *
+   * Pass `readTimeoutMs` to read a response back (e.g. a signature pad or
+   * card reader replying, or a scale sending a weight) — `response` in the
+   * result is base64. For hid:/serial ports, leave `bytes` empty ("") to
+   * do a read-only request with no write first.
+   */
   async sendRaw(
     port: string,
     bytes: string,
-    encoding: "utf8" | "base64" | "hex" = "utf8",
-    baudRate?: number
+    options: {
+      encoding?: "utf8" | "base64" | "hex";
+      /** Serial only. */
+      baudRate?: number;
+      readTimeoutMs?: number;
+      /** usb: ports only — bytes to request in the read transfer. Defaults to 64. */
+      readLength?: number;
+      /** Serial only, beyond baud rate — for less-common protocols. */
+      dataBits?: 5 | 6 | 7 | 8;
+      stopBits?: 1 | 1.5 | 2;
+      parity?: "none" | "even" | "mark" | "odd" | "space";
+      rtscts?: boolean;
+      xon?: boolean;
+      xoff?: boolean;
+    } = {}
   ): Promise<{ bytesWritten: number; response: string }> {
-    return this.request("rawWrite", { port, bytes, encoding, baudRate });
+    return this.request("rawWrite", { port, bytes, ...options });
+  }
+
+  /**
+   * Low-level USB control transfer — the mechanism many USB devices use
+   * for configuration/status exchanges outside their normal data
+   * endpoints. Pass `data` (base64) for an OUT transfer, or `readLength`
+   * for an IN transfer.
+   */
+  async usbControlTransfer(params: {
+    vendorId: number;
+    productId: number;
+    bmRequestType: number;
+    bRequest: number;
+    wValue: number;
+    wIndex: number;
+    data?: string;
+    readLength?: number;
+  }): Promise<{ response: string }> {
+    return this.request("usbControlTransfer", params);
   }
 
   disconnect(): void {

@@ -37,8 +37,8 @@ export default function HomePage() {
               <p>Write raw ESC/POS or ZPL directly to receipt and label printers over USB, serial, or IP.</p>
             </div>
             <div className="card">
-              <h3>Scales &amp; scanners</h3>
-              <p>Read and write raw bytes over serial or HID for connected scales, barcode scanners, and pole displays.</p>
+              <h3>Scales, scanners &amp; USB devices</h3>
+              <p>Read and write raw bytes over serial, HID, or direct USB endpoints — including control transfers — for connected scales, barcode scanners, card readers, and signature pads.</p>
             </div>
             <div className="card">
               <h3>Signed responses</h3>

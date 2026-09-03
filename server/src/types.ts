@@ -3,7 +3,7 @@ export type PrintDataType = "pdf" | "html" | "raw" | "zpl" | "escpos";
 export type DeviceKind = "usb" | "serial" | "hid";
 
 export interface ConnectionTarget {
-  /** "usb:<vendorId>:<productId>", "serial:COM3", or "tcp:192.168.1.50:9100" */
+  /** "usb:<vendorIdHex>:<productIdHex>:<endpointAddress>", "serial:COM3", or "tcp:192.168.1.50:9100" */
   connection?: string;
 }
 
@@ -48,10 +48,42 @@ export interface PrintRequest extends ConnectionTarget {
 export interface RawWriteRequest {
   id: string;
   action: "rawWrite";
+  /** "COM3" / "/dev/ttyUSB0" (serial), "tcp:host:port", "hid:<path>",
+   *  or "usb:<vendorIdHex>:<productIdHex>:<endpointAddress>" */
   port: string;
+  /** Bytes to write. Leave empty ("") for a read-only request. */
   bytes: string;
   encoding?: "utf8" | "base64" | "hex";
   baudRate?: number;
+  /** For hid:/usb: ports — read back a response after writing (or instead
+   *  of writing, if bytes is empty). Omit to skip reading entirely.
+   *  For plain serial ports, defaults to 300ms if omitted. */
+  readTimeoutMs?: number;
+  /** For usb: ports only — how many bytes to request in the read transfer.
+   *  Defaults to 64. */
+  readLength?: number;
+  /** Serial ports only — beyond baud rate, for less-common protocols. */
+  dataBits?: 5 | 6 | 7 | 8;
+  stopBits?: 1 | 1.5 | 2;
+  parity?: "none" | "even" | "mark" | "odd" | "space";
+  rtscts?: boolean;
+  xon?: boolean;
+  xoff?: boolean;
+}
+
+export interface UsbControlTransferRequest {
+  id: string;
+  action: "usbControlTransfer";
+  vendorId: number;
+  productId: number;
+  bmRequestType: number;
+  bRequest: number;
+  wValue: number;
+  wIndex: number;
+  /** Base64 payload for an OUT transfer. Omit (and set readLength instead) for an IN transfer. */
+  data?: string;
+  /** Byte count to read for an IN transfer. Omit for an OUT transfer. */
+  readLength?: number;
 }
 
 export interface ListDevicesRequest {
@@ -69,6 +101,7 @@ export type IncomingMessage =
   | ListPrintersRequest
   | PrintRequest
   | RawWriteRequest
+  | UsbControlTransferRequest
   | ListDevicesRequest
   | CertificateRequest;
 

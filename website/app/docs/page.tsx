@@ -82,8 +82,17 @@ await pp.connect();`}</code>
                 <td><code>options.type</code> is one of <code>pdf | html | raw | zpl | escpos</code>. See below.</td>
               </tr>
               <tr>
-                <td><code>sendRaw(port, bytes, encoding?, baudRate?)</code></td>
-                <td>Raw serial/HID/TCP write, e.g. for a connected scale or scanner.</td>
+                <td><code>sendRaw(port, bytes, options?)</code></td>
+                <td>
+                  Raw serial/HID/USB/TCP write (and optionally read). <code>port</code> is <code>"COM3"</code>, <code>"tcp:host:port"</code>,{" "}
+                  <code>"hid:&lt;path&gt;"</code>, or <code>"usb:&lt;vid&gt;:&lt;pid&gt;:&lt;endpoint&gt;"</code>. <code>options.readTimeoutMs</code> reads a
+                  response back (base64, in the result); leave <code>bytes</code> empty for a read-only request. Serial-only options: <code>baudRate</code>,{" "}
+                  <code>dataBits</code>, <code>stopBits</code>, <code>parity</code>, <code>rtscts</code>, <code>xon</code>, <code>xoff</code>.
+                </td>
+              </tr>
+              <tr>
+                <td><code>usbControlTransfer(params)</code></td>
+                <td>Low-level USB control transfer for device configuration/status exchanges outside normal data endpoints. <code>params.data</code> (base64) for an OUT transfer, or <code>params.readLength</code> for an IN transfer.</td>
               </tr>
               <tr>
                 <td><code>listDevices(type)</code></td>
@@ -134,10 +143,35 @@ await pp.connect();`}</code>
           <pre><code>{`{
   "id": "abc",
   "action": "rawWrite",
-  "port": "COM3",              // or "/dev/ttyUSB0", "tcp:host:port", "hid:<path>"
-  "bytes": "...",
+  "port": "COM3",              // or "/dev/ttyUSB0", "tcp:host:port",
+                                // "hid:<path>", or "usb:<vidHex>:<pidHex>:<endpoint>"
+  "bytes": "...",               // leave "" for a read-only request
   "encoding": "utf8",          // utf8 | base64 | hex
-  "baudRate": 9600
+  "readTimeoutMs": 500,        // optional: read a response back (base64)
+  "readLength": 64,            // optional, usb: ports only
+
+  // Serial ports only, beyond baudRate:
+  "baudRate": 9600,
+  "dataBits": 8,                // 5 | 6 | 7 | 8
+  "stopBits": 1,                 // 1 | 1.5 | 2
+  "parity": "none",             // none | even | mark | odd | space
+  "rtscts": false,
+  "xon": false,
+  "xoff": false
+}`}</code></pre>
+
+          <h3 style={{ fontSize: 16 }}>usbControlTransfer</h3>
+          <pre><code>{`{
+  "id": "abc",
+  "action": "usbControlTransfer",
+  "vendorId": 1155,
+  "productId": 22352,
+  "bmRequestType": 33,
+  "bRequest": 9,
+  "wValue": 512,
+  "wIndex": 0,
+  "data": "..."                 // base64, for an OUT transfer
+  // or: "readLength": 8        // for an IN transfer instead
 }`}</code></pre>
 
           <h3 style={{ fontSize: 16 }}>listDevices</h3>
@@ -157,8 +191,9 @@ await pp.connect();`}</code>
         <section>
           <h2>Roadmap</h2>
           <p className="lead">
-            PrintPort covers the core QZ Tray use case today — silent printing (PDF/HTML/ESC-POS/ZPL) over
-            network, serial, and USB connections. A few gaps remain versus full QZ Tray parity:
+            PrintPort now covers essentially the full QZ Tray feature set on Windows — silent printing with full
+            page-setup options, raw ESC/POS/ZPL, and USB/HID/serial device I/O including control transfers and
+            configurable serial parameters. One gap remains:
           </p>
           <table>
             <thead>
@@ -169,22 +204,13 @@ await pp.connect();`}</code>
             </thead>
             <tbody>
               <tr>
-                <td>USB/HID raw read + control transfers</td>
-                <td>Today's USB/HID support is enumeration and HID-write only — needed for signature pads, card readers, and similar devices</td>
-              </tr>
-              <tr>
-                <td>Serial data bits / parity / flow control options</td>
-                <td>Only baud rate is configurable today</td>
-              </tr>
-              <tr>
                 <td>macOS and Linux installers</td>
                 <td>Windows is built and tested; the other two are scaffolded but not yet produced</td>
               </tr>
             </tbody>
           </table>
           <p style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 10 }}>
-            Print options (duplex, orientation, paper size, margins, color, scale) shipped — see the{" "}
-            <code>print</code> wire protocol above.
+            See <code>QZ-TRAY-FEATURE-PARITY.md</code> in the project source for the full, item-by-item comparison.
           </p>
         </section>
       </main>
