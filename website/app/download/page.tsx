@@ -18,7 +18,7 @@ function detectOS(): OS {
 const RELEASES = {
   windows: {
     label: "Windows",
-    file: "PrintPort-Setup-1.0.1.exe",
+    file: "PrintPort-Setup-1.1.0.exe",
     note: "Windows 10/11, 64-bit",
     available: true,
   },

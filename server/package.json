@@ -1,6 +1,6 @@
 {
   "name": "printport-server",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "PrintPort background bridge — Electron tray app + local WSS server for printer/serial/USB access from the browser.",
   "main": "dist/main.js",
   "scripts": {
