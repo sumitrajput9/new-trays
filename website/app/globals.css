@@ -254,3 +254,147 @@ footer {
 .dot.ok {
   background: #22c55e;
 }
+
+.hero {
+  position: relative;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 700px;
+  height: 400px;
+  background: radial-gradient(ellipse at center, var(--accent-dim) 0%, transparent 70%);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.eyebrow {
+  display: inline-block;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  margin-bottom: 20px;
+}
+
+.icon-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 14px;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin: 40px 0 8px;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding-left: 44px;
+}
+
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #051324;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.step p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cta-band {
+  border-top: 1px solid var(--border);
+  padding: 56px 0;
+  text-align: center;
+  background: linear-gradient(180deg, transparent, var(--bg-elevated) 150%);
+}
+
+.cta-band h2 {
+  margin-bottom: 10px;
+}
+
+.cta-band p.lead {
+  margin-bottom: 28px;
+}
+
+table td.good {
+  color: #4ade80;
+}
+
+table td.neutral {
+  color: var(--text-dim);
+}
+
+.use-case {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.use-case:last-child {
+  border-bottom: none;
+}
+
+.use-case .icon-badge {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.use-case h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.use-case p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
