@@ -27,12 +27,31 @@
     DetailPrint "Warning: PrintPort exited with code $0 while generating its certificate."
   ${EndIf}
 
-  ${IfNot} ${FileExists} "$APPDATA\PrintPort\ca-cert.pem"
+  ; The process has exited by now, but the file can still take a moment to
+  ; become visible (antivirus real-time scanning of a freshly written file
+  ; has caused exactly this kind of lag throughout this project's own
+  ; testing) — so retry the existence check for a few seconds instead of
+  ; giving up on the very first look.
+  StrCpy $3 0
+  certCheckLoop:
+    ${If} ${FileExists} "$APPDATA\PrintPort\ca-cert.pem"
+      Goto certFileReady
+    ${EndIf}
+    IntOp $3 $3 + 1
+    ${If} $3 >= 10
+      Goto certFileMissing
+    ${EndIf}
+    Sleep 500
+    Goto certCheckLoop
+
+  certFileMissing:
     MessageBox MB_OK|MB_ICONEXCLAMATION \
       "PrintPort installed, but its certificate file wasn't found, so this step can't finish automatically.$\r$\n$\r$\n\
       Websites using PrintPort will show one certificate warning the first time they connect — visit \
       https://127.0.0.1:8181 once and click through it, and it won't happen again."
-  ${Else}
+    Goto certStepDone
+
+  certFileReady:
     DetailPrint "Trusting PrintPort's local certificate..."
     ExecWait 'certutil -user -addstore "Root" "$APPDATA\PrintPort\ca-cert.pem"' $1
     DetailPrint "certutil -addstore exit code: $1"
@@ -49,7 +68,8 @@
         Websites using PrintPort will show one certificate warning the first time they connect — visit \
         https://127.0.0.1:8181 once and click through it, and it won't happen again."
     ${EndIf}
-  ${EndIf}
+
+  certStepDone:
 !macroend
 
 !macro customUnInstall
