@@ -11,13 +11,13 @@ export default function HomePage() {
           <span className="eyebrow">Self-hosted · Open source you own</span>
           <h1>Print from the browser. To any printer, scale, or scanner.</h1>
           <p>
-            PrintPort is a small background app that gives your web pages a secure, signed local bridge to
+            PrintTrays is a small background app that gives your web pages a secure, signed local bridge to
             OS printers, thermal/label printers, and USB, HID, or serial devices — without a plugin, and
             without a browser print dialog ever appearing.
           </p>
           <div className="hero-actions">
             <Link href="/download" className="btn">
-              Download PrintPort
+              Download PrintTrays
             </Link>
             <Link href="/demo" className="btn-ghost">
               Try the live demo
@@ -30,7 +30,7 @@ export default function HomePage() {
           <p className="lead">Install once per machine. Every page on your site can print from then on.</p>
           <div className="steps">
             <div className="step">
-              <h3>Install PrintPort</h3>
+              <h3>Install PrintTrays</h3>
               <p>One installer, runs quietly in the system tray, starts automatically at login. Nobody has to think about it again.</p>
             </div>
             <div className="step">
@@ -66,7 +66,7 @@ export default function HomePage() {
             <div className="card">
               <div className="icon-badge">✓</div>
               <h3>Verified, not just trusted</h3>
-              <p>Every response from the bridge is RSA-signed and pinned client-side, so a page can confirm it's really talking to your PrintPort install — not an impostor on the same port.</p>
+              <p>Every response from the bridge is RSA-signed and pinned client-side, so a page can confirm it's really talking to your PrintTrays install — not an impostor on the same port.</p>
             </div>
             <div className="card">
               <div className="icon-badge">●</div>
@@ -88,7 +88,7 @@ export default function HomePage() {
             <thead>
               <tr>
                 <th></th>
-                <th>PrintPort</th>
+                <th>PrintTrays</th>
                 <th>A third-party closed-source bridge</th>
               </tr>
             </thead>
@@ -161,9 +161,9 @@ export default function HomePage() {
           <h2>Three lines of code</h2>
           <p className="lead">That's the whole integration.</p>
           <pre>
-            <code>{`import { PrintPort } from "./printport.js";
+            <code>{`import { PrintTrays } from "./printtrays.js";
 
-const pp = new PrintPort();
+const pp = new PrintTrays();
 await pp.connect();
 await pp.print("EPSON TM-T88", "\\x1bHello world\\x1b", { type: "escpos" });`}</code>
           </pre>
@@ -173,10 +173,10 @@ await pp.print("EPSON TM-T88", "\\x1bHello world\\x1b", { type: "escpos" });`}</
       <div className="cta-band">
         <div className="container">
           <h2>Ready to print without the dialog?</h2>
-          <p className="lead">Install PrintPort once, then include the SDK anywhere you need to print.</p>
+          <p className="lead">Install PrintTrays once, then include the SDK anywhere you need to print.</p>
           <div className="hero-actions">
             <Link href="/download" className="btn">
-              Download PrintPort
+              Download PrintTrays
             </Link>
             <Link href="/docs" className="btn-ghost">
               Read the docs

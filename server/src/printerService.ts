@@ -32,10 +32,10 @@ export async function listPrinters(): Promise<PrinterInfo[]> {
   }
 }
 
-/** Maps PrintPort's wire-protocol print options onto Electron's native
+/** Maps PrintTrays's wire-protocol print options onto Electron's native
  *  print() options — duplex/orientation/paper size/margins/color are all
  *  already supported by Chromium's print pipeline, just not previously
- *  exposed through PrintPort's own API. */
+ *  exposed through PrintTrays's own API. */
 function buildElectronPrintOptions(req: PrintRequest, printer: string, copies: number): Electron.WebContentsPrintOptions {
   return {
     silent: true,
@@ -68,7 +68,7 @@ async function printRendered(html: string, req: PrintRequest, printer: string, c
 }
 
 async function printPdfBase64(base64: string, req: PrintRequest, printer: string, copies = 1): Promise<void> {
-  const tmp = path.join(os.tmpdir(), `printport-${Date.now()}.pdf`);
+  const tmp = path.join(os.tmpdir(), `printtrays-${Date.now()}.pdf`);
   fs.writeFileSync(tmp, Buffer.from(base64, "base64"));
   const win = new BrowserWindow({ show: false, webPreferences: { plugins: true } });
   try {
@@ -89,7 +89,7 @@ async function printPdfBase64(base64: string, req: PrintRequest, printer: string
  *  printer configured with a raw/passthrough (e.g. "Generic / Text Only")
  *  driver. This bypasses page rendering entirely. */
 async function printRawToSpooler(bytes: Buffer, printer: string): Promise<void> {
-  const tmp = path.join(os.tmpdir(), `printport-raw-${Date.now()}.bin`);
+  const tmp = path.join(os.tmpdir(), `printtrays-raw-${Date.now()}.bin`);
   fs.writeFileSync(tmp, bytes);
   try {
     if (process.platform === "win32") {

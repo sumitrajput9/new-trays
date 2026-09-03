@@ -22,9 +22,9 @@ export default function DemoPage() {
     setStatus("connecting");
     appendLog("Connecting to wss://127.0.0.1:8181 ...");
     try {
-      const sdkUrl = "/printport.js";
-      const { PrintPort } = await import(/* webpackIgnore: true */ sdkUrl);
-      const pp = new PrintPort({ downloadUrl: "/download" });
+      const sdkUrl = "/printtrays.js";
+      const { PrintTrays } = await import(/* webpackIgnore: true */ sdkUrl);
+      const pp = new PrintTrays({ downloadUrl: "/download" });
       await pp.connect();
       setPpRef(pp);
       setStatus("connected");
@@ -50,7 +50,7 @@ export default function DemoPage() {
       await ppRef.print(
         selected,
         `<html><body style="font-family:sans-serif;padding:40px">
-           <h1>PrintPort test page</h1>
+           <h1>PrintTrays test page</h1>
            <p>If you can read this on paper, the bridge is working.</p>
            <p>Printed at ${new Date().toString()}</p>
          </body></html>`,
@@ -69,7 +69,7 @@ export default function DemoPage() {
         <section style={{ borderTop: "none", paddingTop: 56 }}>
           <h2>Live demo</h2>
           <p className="lead">
-            This page talks to PrintPort running on <em>your</em> machine, right now, over{" "}
+            This page talks to PrintTrays running on <em>your</em> machine, right now, over{" "}
             <code>wss://127.0.0.1:8181</code>. Nothing is sent to any server.
           </p>
 
@@ -78,12 +78,12 @@ export default function DemoPage() {
             {status === "idle" && "Not connected yet"}
             {status === "connecting" && "Connecting..."}
             {status === "connected" && `Connected — ${printers.length} printer(s) found`}
-            {status === "failed" && "Couldn't reach PrintPort — see steps below"}
+            {status === "failed" && "Couldn't reach PrintTrays — see steps below"}
           </div>
 
           {status !== "connected" && (
             <button className="btn" onClick={handleConnect}>
-              Connect to PrintPort
+              Connect to PrintTrays
             </button>
           )}
 
@@ -96,7 +96,7 @@ export default function DemoPage() {
               </p>
               <ol style={{ margin: "0 0 14px", paddingLeft: 20, color: "var(--text-dim)", fontSize: 14, lineHeight: 1.7 }}>
                 <li>
-                  <strong>Trust the local certificate</strong> — until PrintPort is installed via its full
+                  <strong>Trust the local certificate</strong> — until PrintTrays is installed via its full
                   installer (which imports the certificate automatically), your browser needs to be told to trust
                   it once per profile.{" "}
                   <a href={CERT_URL} target="_blank" rel="noopener">
@@ -105,7 +105,7 @@ export default function DemoPage() {
                   , click <em>Advanced → Proceed</em> on the warning page, then come back and click Connect again.
                 </li>
                 <li>
-                  <strong>Make sure PrintPort is actually running</strong> — look for its icon in your system
+                  <strong>Make sure PrintTrays is actually running</strong> — look for its icon in your system
                   tray. If it's not there, <a href="/download">download and install it</a> first.
                 </li>
               </ol>

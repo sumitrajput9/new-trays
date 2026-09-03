@@ -6,7 +6,7 @@ export default function Nav() {
       <nav className="nav">
         <Link href="/" className="brand">
           <span className="mark" />
-          PrintPort
+          PrintTrays
         </Link>
         <div className="nav-links">
           <Link href="/download">Download</Link>

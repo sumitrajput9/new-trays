@@ -1,11 +1,11 @@
 /**
- * PrintPort client SDK — include via <script src="printport.js"></script>
- * or `import { PrintPort } from "@printport/client-sdk"`.
+ * PrintTrays client SDK — include via <script src="printtrays.js"></script>
+ * or `import { PrintTrays } from "@printtrays/client-sdk"`.
  *
- * Talks to the local PrintPort bridge app over wss://127.0.0.1:8181.
+ * Talks to the local PrintTrays bridge app over wss://127.0.0.1:8181.
  * Every response from the bridge is RSA-signed; this SDK verifies that
  * signature and pins the bridge's public key on first connect (trust-on-
- * first-use), so a page can tell a genuine local PrintPort install apart
+ * first-use), so a page can tell a genuine local PrintTrays install apart
  * from some other process squatting on the port.
  */
 
@@ -63,13 +63,13 @@ export interface PrintOptions {
 /**
  * 8181 collides surprisingly often — it's QZ Tray's own default, and QZ Tray
  * also occupies 8282 as its own secondary port, which rules that out as a
- * fallback too. PrintPort's server tries these same ports in this same
+ * fallback too. PrintTrays's server tries these same ports in this same
  * order (see server/src/wsServer.ts PORT_CANDIDATES) and binds whichever is
  * free first, so the SDK tries them in the same order to find it.
  */
 const DEFAULT_PORT_CANDIDATES = [8181, 18181, 28181];
 
-export interface PrintPortOptions {
+export interface PrintTraysOptions {
   host?: string;
   /** Pin to one specific port instead of trying the default candidate list. */
   port?: number;
@@ -79,7 +79,7 @@ export interface PrintPortOptions {
    *  or leave unset to let the SDK show a built-in prompt. */
   onNotInstalled?: (downloadUrl: string) => void;
   /** Called when the bridge's identity has changed since last visit (the
-   *  normal result of a PrintPort reinstall) — return/resolve true to trust
+   *  normal result of a PrintTrays reinstall) — return/resolve true to trust
    *  the new identity and continue, or false to refuse. Leave unset to let
    *  the SDK ask via a native confirm() dialog. */
   onIdentityChanged?: () => boolean | Promise<boolean>;
@@ -97,31 +97,31 @@ interface Envelope<T = unknown> {
   keyFingerprint: string;
 }
 
-const PINNED_KEY_STORAGE = "printport:pinnedPublicKey";
-const PINNED_FINGERPRINT_STORAGE = "printport:pinnedFingerprint";
+const PINNED_KEY_STORAGE = "printtrays:pinnedPublicKey";
+const PINNED_FINGERPRINT_STORAGE = "printtrays:pinnedFingerprint";
 
-export class PrintPortUntrustedError extends Error {}
-export class PrintPortNotInstalledError extends Error {}
+export class PrintTraysUntrustedError extends Error {}
+export class PrintTraysNotInstalledError extends Error {}
 
-export class PrintPort {
+export class PrintTrays {
   private ws: WebSocket | undefined;
   private pending = new Map<
     string,
     { resolve: (v: unknown) => void; reject: (e: Error) => void; skipVerify: boolean }
   >();
   private pinnedPublicKey: CryptoKey | undefined;
-  private opts: Omit<Required<PrintPortOptions>, "port">;
+  private opts: Omit<Required<PrintTraysOptions>, "port">;
   private portCandidates: number[];
   /** The connected bridge's version string, set once connect() resolves. */
   version: string | undefined;
 
-  constructor(options: PrintPortOptions = {}) {
+  constructor(options: PrintTraysOptions = {}) {
     this.opts = {
       host: options.host ?? "127.0.0.1",
       connectTimeoutMs: options.connectTimeoutMs ?? 2500,
       onNotInstalled: options.onNotInstalled ?? defaultNotInstalledPrompt,
       onIdentityChanged: options.onIdentityChanged ?? defaultIdentityChangedPrompt,
-      downloadUrl: options.downloadUrl ?? "https://printport.example.com/download",
+      downloadUrl: options.downloadUrl ?? "https://printtrays.example.com/download",
     };
     // An explicit port pins to only that one; otherwise try the same
     // fallback list the server itself tries, in order.
@@ -129,7 +129,7 @@ export class PrintPort {
   }
 
   async connect(): Promise<void> {
-    let lastError: Error = new PrintPortNotInstalledError("PrintPort bridge not reachable");
+    let lastError: Error = new PrintTraysNotInstalledError("PrintTrays bridge not reachable");
 
     for (const port of this.portCandidates) {
       try {
@@ -180,7 +180,7 @@ export class PrintPort {
 
       socket.addEventListener("error", () => {
         clearTimeout(timer);
-        reject(new Error(`Failed to connect to PrintPort bridge on port ${port}`));
+        reject(new Error(`Failed to connect to PrintTrays bridge on port ${port}`));
       });
 
       socket.addEventListener("close", () => {
@@ -193,7 +193,7 @@ export class PrintPort {
     const stored = localStorage.getItem(PINNED_FINGERPRINT_STORAGE);
     if (stored && stored !== fingerprint) {
       // A changed identity is the normal, expected outcome of reinstalling
-      // PrintPort (a fresh install generates a fresh signing key) — the
+      // PrintTrays (a fresh install generates a fresh signing key) — the
       // overwhelmingly common case, not an attack. Rather than dead-ending
       // with instructions to go clear browser storage manually, ask once
       // and let the SDK re-pin itself on confirmation. A custom
@@ -202,8 +202,8 @@ export class PrintPort {
       const accepted = await this.opts.onIdentityChanged();
 
       if (!accepted) {
-        throw new PrintPortUntrustedError(
-          "PrintPort bridge identity changed since last visit and the new one wasn't trusted."
+        throw new PrintTraysUntrustedError(
+          "PrintTrays bridge identity changed since last visit and the new one wasn't trusted."
         );
       }
     }
@@ -311,13 +311,13 @@ export class PrintPort {
       const valid = await verifyEnvelope(envelope, this.pinnedPublicKey);
       if (!valid) {
         return waiter.reject(
-          new PrintPortUntrustedError("Response signature verification failed — message may be forged")
+          new PrintTraysUntrustedError("Response signature verification failed — message may be forged")
         );
       }
     }
 
     if (envelope.ok) waiter.resolve(envelope.result);
-    else waiter.reject(new Error(envelope.error ?? "Unknown PrintPort error"));
+    else waiter.reject(new Error(envelope.error ?? "Unknown PrintTrays error"));
   }
 }
 
@@ -363,15 +363,15 @@ function defaultNotInstalledPrompt(downloadUrl: string): void {
     "padding:14px 18px;border-radius:10px;font:14px/1.4 system-ui,sans-serif;max-width:320px;" +
     "box-shadow:0 8px 24px rgba(0,0,0,.25)";
   banner.innerHTML =
-    `<strong>PrintPort isn't running.</strong><br>Install the local print bridge to enable printing from this page.` +
-    `<br><a href="${downloadUrl}" target="_blank" rel="noopener" style="color:#60a5fa">Download PrintPort</a>`;
+    `<strong>PrintTrays isn't running.</strong><br>Install the local print bridge to enable printing from this page.` +
+    `<br><a href="${downloadUrl}" target="_blank" rel="noopener" style="color:#60a5fa">Download PrintTrays</a>`;
   document.body.appendChild(banner);
 }
 
 function defaultIdentityChangedPrompt(): boolean {
   if (typeof confirm === "undefined") return false;
   return confirm(
-    "PrintPort's certificate has changed since your last visit to this site. " +
-      "This is expected if PrintPort was reinstalled. Trust the new one and continue?"
+    "PrintTrays's certificate has changed since your last visit to this site. " +
+      "This is expected if PrintTrays was reinstalled. Trust the new one and continue?"
   );
 }

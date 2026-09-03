@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run by macOS Installer.app after PrintPort.app is copied into /Applications
+# Run by macOS Installer.app after PrintTrays.app is copied into /Applications
 # (wired in via electron-builder's build.pkg.scripts, see server/package.json).
 #
 # 1. Launch the app once, hidden, so certManager.ts generates the local CA.
@@ -8,9 +8,9 @@
 
 set -e
 
-APP="/Applications/PrintPort.app"
+APP="/Applications/PrintTrays.app"
 USER_HOME=$(eval echo "~$USER")
-CA_PATH="$USER_HOME/Library/Application Support/PrintPort/ca-cert.pem"
+CA_PATH="$USER_HOME/Library/Application Support/PrintTrays/ca-cert.pem"
 
 open -a "$APP" --args --generate-cert-and-exit
 # Give the app a moment to write the cert files before we read them.
@@ -22,7 +22,7 @@ done
 if [ -f "$CA_PATH" ]; then
   security add-trusted-cert -r trustRoot -k "$USER_HOME/Library/Keychains/login.keychain-db" "$CA_PATH"
 else
-  echo "PrintPort: certificate file not found after launch, skipping trust import." >&2
+  echo "PrintTrays: certificate file not found after launch, skipping trust import." >&2
 fi
 
 exit 0

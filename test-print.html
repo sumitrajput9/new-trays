@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>PrintPort — quick test</title>
+<title>PrintTrays — quick test</title>
 <style>
   body { font: 15px system-ui, sans-serif; background: #0b1220; color: #e7ecf5; max-width: 640px; margin: 48px auto; padding: 0 20px; }
   h1 { font-size: 22px; }
@@ -20,38 +20,38 @@
 </style>
 </head>
 <body>
-  <h1>PrintPort — quick test page</h1>
+  <h1>PrintTrays — quick test page</h1>
   <p class="lead">Single self-contained HTML file, no server or Node.js required. Just double-click to open it in Chrome/Edge and click Connect.</p>
 
   <div class="status"><span id="dot" class="dot"></span><span id="statusText">Not connected yet</span></div>
 
-  <button id="connectBtn">Connect to PrintPort</button>
+  <button id="connectBtn">Connect to PrintTrays</button>
 
   <div id="failedCard" class="card" style="display:none">
-    <strong>PrintPort doesn't seem to be installed or running.</strong>
+    <strong>PrintTrays doesn't seem to be installed or running.</strong>
     <p style="margin:10px 0">
-      <a id="downloadLink" href="./PrintPort-Setup-1.2.0.exe" download
+      <a id="downloadLink" href="./PrintTrays-Setup-1.2.0.exe" download
          style="display:inline-block;background:#4da3ff;color:#051324;font-weight:600;padding:9px 16px;border-radius:8px;text-decoration:none">
-        ⬇ Download &amp; install PrintPort
+        ⬇ Download &amp; install PrintTrays
       </a>
     </p>
     <p style="font-size:13px;color:#9aa7bd">
-      (Looks for <code>PrintPort-Setup-1.2.0.exe</code> next to this page. If the download doesn't start, ask whoever sent you this link for it.)
+      (Looks for <code>PrintTrays-Setup-1.2.0.exe</code> next to this page. If the download doesn't start, ask whoever sent you this link for it.)
     </p>
     <strong>Already installed? Two things this usually means instead:</strong>
     <ol>
       <li>
         <strong>Trust the local certificate</strong> — click the button below, click <em>Advanced → Proceed</em> in the
         small window that opens, then it'll close itself and retry automatically.
-        (Skip this if PrintPort was installed via its real installer — that trusts the certificate automatically, and
+        (Skip this if PrintTrays was installed via its real installer — that trusts the certificate automatically, and
         this button won't be needed at all.)
         <div style="margin-top:8px">
           <button id="trustCertBtn" style="background:#223047;color:#e7ecf5;border:1px solid #4da3ff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px">
-            Trust PrintPort's certificate
+            Trust PrintTrays's certificate
           </button>
         </div>
       </li>
-      <li><strong>Make sure PrintPort is running</strong> — look for its icon in the system tray.</li>
+      <li><strong>Make sure PrintTrays is running</strong> — look for its icon in the system tray.</li>
     </ol>
   </div>
 
@@ -65,10 +65,10 @@
   <pre id="log">(nothing yet)</pre>
 
 <script>
-// Inlined, non-module copy of the PrintPort client SDK so this file works
+// Inlined, non-module copy of the PrintTrays client SDK so this file works
 // standalone via double-click (file://) with no build step or web server.
-// Source of truth: /client-sdk/src/printport.ts — keep behavior in sync.
-const PINNED_FINGERPRINT_STORAGE = "printport:pinnedFingerprint";
+// Source of truth: /client-sdk/src/printtrays.ts — keep behavior in sync.
+const PINNED_FINGERPRINT_STORAGE = "printtrays:pinnedFingerprint";
 // 8181 collides surprisingly often (it's QZ Tray's own default), and QZ Tray
 // also occupies 8282 as its own secondary port, which rules that out as a
 // fallback too. The server tries this same list in this same order
@@ -76,7 +76,7 @@ const PINNED_FINGERPRINT_STORAGE = "printport:pinnedFingerprint";
 // first, so we try them in the same order to find it.
 const DEFAULT_PORT_CANDIDATES = [8181, 18181, 28181];
 
-class PrintPort {
+class PrintTrays {
   constructor(options = {}) {
     this.ws = undefined;
     this.pending = new Map();
@@ -89,7 +89,7 @@ class PrintPort {
   }
 
   async connect() {
-    let lastError = new Error("PrintPort bridge not reachable");
+    let lastError = new Error("PrintTrays bridge not reachable");
 
     for (const port of this.portCandidates) {
       try {
@@ -125,7 +125,7 @@ class PrintPort {
 
       socket.addEventListener("open", () => { clearTimeout(timer); resolve(socket); });
       socket.addEventListener("message", (ev) => this.onMessage(ev.data));
-      socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error(`Failed to connect to PrintPort bridge on port ${port}`)); });
+      socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error(`Failed to connect to PrintTrays bridge on port ${port}`)); });
       socket.addEventListener("close", () => { if (this.ws === socket) this.ws = undefined; });
     });
   }
@@ -133,15 +133,15 @@ class PrintPort {
   async trustKey(fingerprint, publicKeyPem) {
     const stored = localStorage.getItem(PINNED_FINGERPRINT_STORAGE);
     if (stored && stored !== fingerprint) {
-      // A changed identity is the normal result of reinstalling PrintPort,
+      // A changed identity is the normal result of reinstalling PrintTrays,
       // not an attack — ask once and re-pin on confirmation instead of a
       // dead end telling the user to go clear browser storage manually.
       const accepted = typeof confirm !== "undefined" && confirm(
-        "PrintPort's certificate has changed since your last visit to this site. " +
-        "This is expected if PrintPort was reinstalled. Trust the new one and continue?"
+        "PrintTrays's certificate has changed since your last visit to this site. " +
+        "This is expected if PrintTrays was reinstalled. Trust the new one and continue?"
       );
       if (!accepted) {
-        throw new Error("PrintPort bridge identity changed since last visit and the new one wasn't trusted.");
+        throw new Error("PrintTrays bridge identity changed since last visit and the new one wasn't trusted.");
       }
     }
     this.pinnedPublicKey = await importSpkiPem(publicKeyPem);
@@ -174,7 +174,7 @@ class PrintPort {
       if (!valid) return waiter.reject(new Error("Response signature verification failed"));
     }
     if (envelope.ok) waiter.resolve(envelope.result);
-    else waiter.reject(new Error(envelope.error ?? "Unknown PrintPort error"));
+    else waiter.reject(new Error(envelope.error ?? "Unknown PrintTrays error"));
   }
 }
 
@@ -221,10 +221,10 @@ async function attemptConnect() {
   printCard.style.display = "none";
   log("Connecting to wss://127.0.0.1:8181 ...");
   try {
-    pp = new PrintPort();
+    pp = new PrintTrays();
     await pp.connect();
     dot.classList.add("ok");
-    log(`Connected to PrintPort v${pp.version ?? "unknown"}. Fetching printer list...`);
+    log(`Connected to PrintTrays v${pp.version ?? "unknown"}. Fetching printer list...`);
     const printers = await pp.getPrinters();
     printerSelect.innerHTML = printers.map(p => `<option value="${p.name}">${p.name}${p.isDefault ? " (default)" : ""}</option>`).join("");
     statusText.textContent = `Connected to v${pp.version ?? "unknown"} — ${printers.length} printer(s) found`;
@@ -232,7 +232,7 @@ async function attemptConnect() {
     printCard.style.display = printers.length ? "block" : "none";
   } catch (err) {
     dot.classList.remove("ok");
-    statusText.textContent = "Couldn't reach PrintPort — see steps below";
+    statusText.textContent = "Couldn't reach PrintTrays — see steps below";
     failedCard.style.display = "block";
     log(`Couldn't connect: ${err.message ?? err}`);
   }
@@ -242,15 +242,15 @@ connectBtn.addEventListener("click", attemptConnect);
 
 const trustCertBtn = document.getElementById("trustCertBtn");
 trustCertBtn.addEventListener("click", () => {
-  log("Opening PrintPort's certificate page in a small window...");
-  const popup = window.open("https://127.0.0.1:8181", "printport-trust", "width=520,height=420");
+  log("Opening PrintTrays's certificate page in a small window...");
+  const popup = window.open("https://127.0.0.1:8181", "printtrays-trust", "width=520,height=420");
   if (!popup) {
     log("Popup blocked — allow popups for this site, or open https://127.0.0.1:8181 manually in a new tab.");
     return;
   }
   // Cross-origin (this page vs. 127.0.0.1) means we can't see what's
   // happening inside the popup, but we CAN see when it closes — the
-  // confirmation page PrintPort serves auto-closes itself once the user
+  // confirmation page PrintTrays serves auto-closes itself once the user
   // gets past the certificate warning, so closing is our signal to retry.
   const poll = setInterval(() => {
     if (popup.closed) {
@@ -269,7 +269,7 @@ printBtn.addEventListener("click", async () => {
     await pp.print(
       printer,
       `<html><body style="font-family:sans-serif;padding:40px">
-         <h1>PrintPort test page</h1>
+         <h1>PrintTrays test page</h1>
          <p>If you can read this on paper, the bridge is working.</p>
          <p>Printed at ${new Date().toString()}</p>
        </body></html>`,

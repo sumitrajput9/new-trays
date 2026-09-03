@@ -9,7 +9,7 @@ export default function DocsPage() {
         <section style={{ borderTop: "none", paddingTop: 56 }}>
           <h2>API documentation</h2>
           <p className="lead">
-            PrintPort exposes a JSON-over-WebSocket protocol on <code>wss://127.0.0.1:8181</code> (with automatic
+            PrintTrays exposes a JSON-over-WebSocket protocol on <code>wss://127.0.0.1:8181</code> (with automatic
             fallback ports), plus a thin client SDK that wraps it.
           </p>
         </section>
@@ -19,7 +19,7 @@ export default function DocsPage() {
           <p className="lead">Four steps, start to finish.</p>
           <ol style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.9 }}>
             <li>
-              <strong>Install PrintPort</strong> on the machine that has the printer — see{" "}
+              <strong>Install PrintTrays</strong> on the machine that has the printer — see{" "}
               <a href="/download">Download</a>. It runs quietly in the system tray from then on, starting
               automatically at login.
             </li>
@@ -27,14 +27,14 @@ export default function DocsPage() {
               <strong>Include the client SDK</strong> in your page, as a native ES module (no build step, no
               bundler required):
               <pre style={{ marginTop: 8 }}><code>{`<script type="module">
-  import { PrintPort } from "https://your-host.example.com/printport.js";
+  import { PrintTrays } from "https://your-host.example.com/printtrays.js";
 </script>`}</code></pre>
             </li>
             <li>
               <strong>Connect</strong> — this is also the point where, the very first time on a given browser
-              profile, the user may need to click through a one-time certificate trust step (PrintPort opens this
+              profile, the user may need to click through a one-time certificate trust step (PrintTrays opens this
               as a small self-closing popup rather than sending the user to a separate tab):
-              <pre style={{ marginTop: 8 }}><code>{`const pp = new PrintPort();
+              <pre style={{ marginTop: 8 }}><code>{`const pp = new PrintTrays();
 await pp.connect();
 console.log("Connected to bridge v" + pp.version);`}</code></pre>
             </li>
@@ -49,9 +49,9 @@ await pp.print(printers[0].name, "<h1>Hello</h1>", { type: "html" });`}</code></
         <section>
           <h2>Client SDK</h2>
           <pre>
-            <code>{`import { PrintPort } from "./printport.js";
+            <code>{`import { PrintTrays } from "./printtrays.js";
 
-const pp = new PrintPort({
+const pp = new PrintTrays({
   host: "127.0.0.1",             // default
   port: undefined,                // default: tries 8181, then 18181, then 28181
   connectTimeoutMs: 2500,
@@ -71,7 +71,7 @@ await pp.connect();`}</code>
             <tbody>
               <tr>
                 <td><code>connect()</code></td>
-                <td>Opens the WSS connection (trying each fallback port in turn), pins the bridge's signing key on first use, and sets <code>pp.version</code> to the connected bridge's version string. Throws <code>PrintPortNotInstalledError</code> if unreachable.</td>
+                <td>Opens the WSS connection (trying each fallback port in turn), pins the bridge's signing key on first use, and sets <code>pp.version</code> to the connected bridge's version string. Throws <code>PrintTraysNotInstalledError</code> if unreachable.</td>
               </tr>
               <tr>
                 <td><code>getPrinters()</code></td>
@@ -180,18 +180,18 @@ await pp.connect();`}</code>
 
         <section>
           <h2>Trust &amp; signing</h2>
-          <p className="lead">How PrintPort avoids QZ Tray-style repeated certificate prompts.</p>
+          <p className="lead">How PrintTrays avoids QZ Tray-style repeated certificate prompts.</p>
           <ul>
-            <li>On first run, PrintPort generates a local CA + TLS leaf certificate (see <code>server/src/certManager.ts</code>). The installer imports the CA into the OS trust store, so the WSS handshake itself is trusted by the browser.</li>
-            <li>Independently, every response is signed with a separate RSA keypair (<code>server/src/signing.ts</code>). The client SDK verifies that signature with WebCrypto and pins the key's fingerprint in <code>localStorage</code> after the first connection — this is what lets a page assert "this really is my local PrintPort install," not just "some TLS server on port 8181."</li>
-            <li>If PrintPort is reinstalled, its signing key changes — the SDK detects this and asks once via a confirmation prompt rather than silently trusting a different identity or dead-ending with no way to recover.</li>
+            <li>On first run, PrintTrays generates a local CA + TLS leaf certificate (see <code>server/src/certManager.ts</code>). The installer imports the CA into the OS trust store, so the WSS handshake itself is trusted by the browser.</li>
+            <li>Independently, every response is signed with a separate RSA keypair (<code>server/src/signing.ts</code>). The client SDK verifies that signature with WebCrypto and pins the key's fingerprint in <code>localStorage</code> after the first connection — this is what lets a page assert "this really is my local PrintTrays install," not just "some TLS server on port 8181."</li>
+            <li>If PrintTrays is reinstalled, its signing key changes — the SDK detects this and asks once via a confirmation prompt rather than silently trusting a different identity or dead-ending with no way to recover.</li>
           </ul>
         </section>
 
         <section>
           <h2>Roadmap</h2>
           <p className="lead">
-            PrintPort now covers essentially the full QZ Tray feature set — silent printing with full page-setup
+            PrintTrays now covers essentially the full QZ Tray feature set — silent printing with full page-setup
             options, raw ESC/POS/ZPL, and USB/HID/serial device I/O including control transfers and configurable
             serial parameters. On the platform side:
           </p>

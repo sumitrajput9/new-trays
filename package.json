@@ -1,8 +1,8 @@
 {
-  "name": "printport",
+  "name": "printtrays",
   "private": true,
   "version": "1.0.0",
-  "description": "PrintPort — a local print-bridge system for connecting web pages to printers, scales, and scanners.",
+  "description": "PrintTrays — a local print-bridge system for connecting web pages to printers, scales, and scanners.",
   "workspaces": [
     "server",
     "client-sdk",

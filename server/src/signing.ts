@@ -4,8 +4,8 @@ import { OutgoingMessageEnvelope } from "./types";
 
 /**
  * Canonicalizes and signs a response payload with the local RSA signing key,
- * so client-sdk can verify the message truly came from this PrintPort
- * instance (see client-sdk/src/printport.ts `verify`).
+ * so client-sdk can verify the message truly came from this PrintTrays
+ * instance (see client-sdk/src/printtrays.ts `verify`).
  */
 export function signEnvelope<T>(
   bundle: CertBundle,

@@ -1,9 +1,9 @@
 {
-  "name": "@printport/client-sdk",
+  "name": "@printtrays/client-sdk",
   "version": "1.0.0",
-  "description": "Browser SDK for talking to the local PrintPort bridge app from any web page.",
-  "main": "dist/printport.js",
-  "types": "dist/printport.d.ts",
+  "description": "Browser SDK for talking to the local PrintTrays bridge app from any web page.",
+  "main": "dist/printtrays.js",
+  "types": "dist/printtrays.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },

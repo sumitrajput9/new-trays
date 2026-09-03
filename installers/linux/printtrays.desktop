@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=PrintPort
+Name=PrintTrays
 Comment=Local print bridge for web apps
-Exec=printport --hidden
-Icon=printport
+Exec=printtrays --hidden
+Icon=printtrays
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true

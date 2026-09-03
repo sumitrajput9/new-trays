@@ -18,7 +18,7 @@ function detectOS(): OS {
 const RELEASES = {
   windows: {
     label: "Windows",
-    file: "PrintPort-Setup-1.2.0.exe",
+    file: "PrintTrays-Setup-1.2.0.exe",
     note: "Windows 10/11, 64-bit",
     available: true,
     altFile: null as string | null,
@@ -34,10 +34,10 @@ const RELEASES = {
   },
   linux: {
     label: "Linux",
-    file: "PrintPort-1.2.0.AppImage" as string | null,
+    file: "PrintTrays-1.2.0.AppImage" as string | null,
     note: "AppImage, x64 — also available as .deb",
     available: true,
-    altFile: "printport-server_1.2.0_amd64.deb" as string | null,
+    altFile: "printtrays-server_1.2.0_amd64.deb" as string | null,
     altLabel: ".deb (Debian/Ubuntu)" as string | null,
   },
 };
@@ -56,7 +56,7 @@ export default function DownloadPage() {
       <Nav />
       <main className="container">
         <section style={{ borderTop: "none", paddingTop: 56 }}>
-          <h2>Download PrintPort</h2>
+          <h2>Download PrintTrays</h2>
           <p className="lead">
             {detected
               ? `We detected ${detected.label}. Grab the right build below, or pick another OS.`
@@ -97,16 +97,16 @@ export default function DownloadPage() {
 
         <section>
           <h2>After installing</h2>
-          <p className="lead">The installer registers auto-start and trusts PrintPort's local certificate for you.</p>
+          <p className="lead">The installer registers auto-start and trusts PrintTrays's local certificate for you.</p>
           <ul>
             <li>Windows: the app launches once automatically to generate and trust its local certificate — no manual step needed on most setups.</li>
             <li>
               Linux: the <code>.deb</code> package's post-install script does this for you automatically. The
               <code>.AppImage</code> has no install step to hook into — run{" "}
-              <code>./PrintPort-1.2.0.AppImage --generate-cert-and-exit</code> once, then follow{" "}
+              <code>./PrintTrays-1.2.0.AppImage --generate-cert-and-exit</code> once, then follow{" "}
               <code>installers/linux/postinst.sh</code> manually (or just use the <code>.deb</code> instead).
             </li>
-            <li>Look for the PrintPort icon in your system tray — that confirms it's running.</li>
+            <li>Look for the PrintTrays icon in your system tray — that confirms it's running.</li>
             <li>If a website ever shows a one-time certificate prompt, it now opens as a small popup that closes itself and reconnects automatically once you click through it.</li>
             <li>macOS is still on the roadmap — see the <a href="/docs">docs page</a> for status.</li>
           </ul>

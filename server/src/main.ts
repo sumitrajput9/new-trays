@@ -1,10 +1,10 @@
 import { app } from "electron";
 import { loadOrCreateCertBundle } from "./certManager";
-import { PrintPortServer, BridgeStatus } from "./wsServer";
+import { PrintTraysServer, BridgeStatus } from "./wsServer";
 import { createTray } from "./tray";
 import { logger } from "./logger";
 
-// PrintPort has no windows/dock icon by default — it is a background bridge
+// PrintTrays has no windows/dock icon by default — it is a background bridge
 // that lives in the system tray, matching the "runs on startup, tray only"
 // requirement.
 app.setLoginItemSettings({
@@ -26,11 +26,11 @@ if (!gotLock) {
   app.quit();
 } else {
   let currentStatus: BridgeStatus = { activeConnections: 0, boundPort: undefined };
-  let server: PrintPortServer | undefined;
+  let server: PrintTraysServer | undefined;
 
   const startBridge = () => {
     const bundle = loadOrCreateCertBundle();
-    server = new PrintPortServer(bundle);
+    server = new PrintTraysServer(bundle);
 
     const trayHandle = createTray(
       () => currentStatus,
@@ -56,7 +56,7 @@ if (!gotLock) {
       return;
     }
 
-    logger.info("PrintPort starting...");
+    logger.info("PrintTrays starting...");
     startBridge();
   });
 

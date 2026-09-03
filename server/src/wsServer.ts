@@ -30,10 +30,10 @@ import {
 // also occupies 8282 as its own secondary port, which rules that out as a
 // fallback choice too — so these fallbacks are deliberately distinctive
 // numbers instead of just incrementing by 100. The client SDK's candidate
-// list (client-sdk/src/printport.ts) must stay in sync with this one so a
+// list (client-sdk/src/printtrays.ts) must stay in sync with this one so a
 // page can find whichever port we landed on.
-export const PORT_CANDIDATES = process.env.PRINTPORT_PORT
-  ? [Number(process.env.PRINTPORT_PORT)]
+export const PORT_CANDIDATES = process.env.PRINTTRAYS_PORT
+  ? [Number(process.env.PRINTTRAYS_PORT)]
   : [8181, 18181, 28181];
 
 export interface BridgeStatus {
@@ -43,7 +43,7 @@ export interface BridgeStatus {
 
 type StatusListener = (status: BridgeStatus) => void;
 
-export class PrintPortServer {
+export class PrintTraysServer {
   private wss: WebSocketServer;
   private httpsServer: https.Server;
   private statusListeners = new Set<StatusListener>();
@@ -74,11 +74,11 @@ export class PrintPortServer {
 
     if (port === undefined) {
       const message =
-        `PrintPort couldn't start: every port it tries (${PORT_CANDIDATES.join(", ")}) is already in use ` +
+        `PrintTrays couldn't start: every port it tries (${PORT_CANDIDATES.join(", ")}) is already in use ` +
         `by another application on this computer. Close whichever app is using one of those ports, then ` +
-        `restart PrintPort.`;
+        `restart PrintTrays.`;
       logger.error(message);
-      dialog.showErrorBox("PrintPort couldn't start", message);
+      dialog.showErrorBox("PrintTrays couldn't start", message);
       return;
     }
 
@@ -96,7 +96,7 @@ export class PrintPortServer {
     this.httpsServer.listen(port, "127.0.0.1", () => {
       this.httpsServer.removeListener("error", onError);
       this.boundPort = port;
-      logger.info(`PrintPort bridge listening on wss://127.0.0.1:${port}`);
+      logger.info(`PrintTrays bridge listening on wss://127.0.0.1:${port}`);
       this.notifyStatus();
     });
   }
@@ -113,13 +113,13 @@ export class PrintPortServer {
   private handleHttpRequest(_req: HttpRequest, res: ServerResponse): void {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(
-      `<!doctype html><html><head><meta charset="utf-8"><title>PrintPort</title>
+      `<!doctype html><html><head><meta charset="utf-8"><title>PrintTrays</title>
       <style>body{font:15px system-ui,sans-serif;background:#0b1220;color:#e7ecf5;padding:48px;text-align:center}
       p{color:#9aa7bd}</style></head><body>
-      <h1>✅ PrintPort bridge is running</h1>
+      <h1>✅ PrintTrays bridge is running</h1>
       <p>${this.connections.size} browser connection(s) currently active.</p>
-      <p>If you opened this page to trust PrintPort's local certificate, this window will close itself —
-      pages using the PrintPort SDK will connect over <code>wss://127.0.0.1:${this.boundPort}</code> automatically.</p>
+      <p>If you opened this page to trust PrintTrays's local certificate, this window will close itself —
+      pages using the PrintTrays SDK will connect over <code>wss://127.0.0.1:${this.boundPort}</code> automatically.</p>
       <script>
         // Only auto-close if this was opened as a popup from another page's
         // "trust the certificate" button — never auto-close a tab someone

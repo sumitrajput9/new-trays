@@ -1,9 +1,9 @@
 {
-  "name": "printport-server",
+  "name": "printtrays-server",
   "version": "1.2.0",
-  "description": "PrintPort background bridge — Electron tray app + local WSS server for printer/serial/USB access from the browser.",
+  "description": "PrintTrays background bridge — Electron tray app + local WSS server for printer/serial/USB access from the browser.",
   "main": "dist/main.js",
-  "homepage": "https://printport.example.com",
+  "homepage": "https://printtrays.example.com",
   "scripts": {
     "dev": "tsc -w -p tsconfig.json & electron dist/main.js",
     "build": "tsc -p tsconfig.json",
@@ -28,8 +28,8 @@
     "typescript": "^5.5.0"
   },
   "build": {
-    "appId": "com.printport.app",
-    "productName": "PrintPort",
+    "appId": "com.printtrays.app",
+    "productName": "PrintTrays",
     "asar": true,
     "files": [
       "dist/**/*",
@@ -45,7 +45,7 @@
     "win": {
       "target": [ { "target": "nsis", "arch": [ "x64" ] } ],
       "icon": "assets/icon.ico",
-      "publisherName": "PrintPort"
+      "publisherName": "PrintTrays"
     },
     "nsis": {
       "oneClick": false,
@@ -69,9 +69,9 @@
       "target": [ "AppImage", "deb" ],
       "icon": "assets/icon.png",
       "category": "Utility",
-      "executableName": "printport",
+      "executableName": "printtrays",
       "desktop": {
-        "Name": "PrintPort",
+        "Name": "PrintTrays",
         "Comment": "Local print bridge for web apps"
       }
     },
@@ -80,8 +80,8 @@
     }
   },
   "author": {
-    "name": "PrintPort",
-    "email": "support@printport.example.com"
+    "name": "PrintTrays",
+    "email": "support@printtrays.example.com"
   },
   "license": "UNLICENSED"
 }

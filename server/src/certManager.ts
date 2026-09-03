@@ -5,7 +5,7 @@ import crypto from "crypto";
 import forge from "node-forge";
 
 /**
- * All PrintPort state (TLS cert, CA, signing keypair) lives under the OS
+ * All PrintTrays state (TLS cert, CA, signing keypair) lives under the OS
  * per-user app-data directory so every OS install behaves the same way.
  */
 export function appDataDir(): string {
@@ -14,7 +14,7 @@ export function appDataDir(): string {
     (process.platform === "darwin"
       ? path.join(os.homedir(), "Library", "Application Support")
       : path.join(os.homedir(), ".config"));
-  const dir = path.join(base, "PrintPort");
+  const dir = path.join(base, "PrintTrays");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -44,7 +44,7 @@ function fingerprintOf(publicKeyPem: string): string {
  * Generates a self-signed local CA + a leaf TLS certificate signed by it, plus
  * a separate RSA keypair used purely for signing outgoing WS message payloads
  * (this is what the client SDK checks to verify a response really came from
- * the genuine local PrintPort instance, not some other localhost process).
+ * the genuine local PrintTrays instance, not some other localhost process).
  */
 function generate(): CertBundle {
   const caKeys = forge.pki.rsa.generateKeyPair(2048);
@@ -54,7 +54,7 @@ function generate(): CertBundle {
   caCert.validity.notBefore = new Date();
   caCert.validity.notAfter = new Date();
   caCert.validity.notAfter.setFullYear(caCert.validity.notBefore.getFullYear() + 10);
-  const caAttrs = [{ name: "commonName", value: "PrintPort Local CA" }, { name: "organizationName", value: "PrintPort" }];
+  const caAttrs = [{ name: "commonName", value: "PrintTrays Local CA" }, { name: "organizationName", value: "PrintTrays" }];
   caCert.setSubject(caAttrs);
   caCert.setIssuer(caAttrs);
   caCert.setExtensions([

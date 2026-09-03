@@ -1,17 +1,17 @@
-# PrintPort installers
+# PrintTrays installers
 
 Packaging is driven by `electron-builder`, configured in [`server/package.json`](../server/package.json) (`"build"` field). Output lands in `installers/out/`.
 
 ```
-npm run server:dist:win     # -> installers/out/PrintPort Setup <version>.exe   (NSIS)
-npm run server:dist:mac     # -> installers/out/PrintPort-<version>.pkg / .dmg
-npm run server:dist:linux   # -> installers/out/PrintPort-<version>.AppImage / .deb
+npm run server:dist:win     # -> installers/out/PrintTrays Setup <version>.exe   (NSIS)
+npm run server:dist:mac     # -> installers/out/PrintTrays-<version>.pkg / .dmg
+npm run server:dist:linux   # -> installers/out/PrintTrays-<version>.AppImage / .deb
 ```
 
 Each platform's installer does two extra things beyond dropping the app in place:
 
 1. **Registers auto-start** — handled in-app via `app.setLoginItemSettings({ openAtLogin: true })` in [`server/src/main.ts`](../server/src/main.ts), so no separate OS-level autostart entry is strictly required. `linux/postinst.sh` additionally installs a `.desktop` autostart entry for desktop environments that don't honor Electron's login-item API (most non-GNOME/KDE setups).
-2. **Trusts the local certificate** — see the per-OS scripts below. PrintPort generates a self-signed local CA the first time it runs ([`server/src/certManager.ts`](../server/src/certManager.ts)). Importing that CA into the OS trust store is what lets browsers connect to `wss://127.0.0.1:8181` without a manual "unsafe certificate" click-through — this is the equivalent of QZ Tray's certificate step, implemented independently here.
+2. **Trusts the local certificate** — see the per-OS scripts below. PrintTrays generates a self-signed local CA the first time it runs ([`server/src/certManager.ts`](../server/src/certManager.ts)). Importing that CA into the OS trust store is what lets browsers connect to `wss://127.0.0.1:8181` without a manual "unsafe certificate" click-through — this is the equivalent of QZ Tray's certificate step, implemented independently here.
 
 ## What you still need to provide (this scaffold does not, and cannot, generate these)
 

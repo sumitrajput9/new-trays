@@ -16,7 +16,7 @@ export interface TrayHandle {
 
 export function createTray(getStatus: () => BridgeStatus, onRestart: () => void): TrayHandle {
   const tray = new Tray(loadTrayIcon());
-  tray.setToolTip("PrintPort — local print bridge");
+  tray.setToolTip("PrintTrays — local print bridge");
 
   const rebuildMenu = () => {
     const status = getStatus();
@@ -38,19 +38,19 @@ export function createTray(getStatus: () => BridgeStatus, onRestart: () => void)
         click: () => onRestart(),
       },
       {
-        label: "About PrintPort",
+        label: "About PrintTrays",
         click: () =>
           dialog.showMessageBox({
-            title: "About PrintPort",
-            message: "PrintPort",
+            title: "About PrintTrays",
+            message: "PrintTrays",
             detail: status.boundPort
               ? `Local print bridge\nVersion ${app.getVersion()}\nListening on wss://127.0.0.1:${status.boundPort}`
-              : `Local print bridge\nVersion ${app.getVersion()}\nNot currently listening on any port — every candidate port was already in use. Close other apps using ports 8181/8282/8283 and restart PrintPort.`,
+              : `Local print bridge\nVersion ${app.getVersion()}\nNot currently listening on any port — every candidate port was already in use. Close other apps using ports 8181/8282/8283 and restart PrintTrays.`,
           }),
       },
       { type: "separator" },
       {
-        label: "Quit PrintPort",
+        label: "Quit PrintTrays",
         click: () => app.quit(),
       },
     ]);

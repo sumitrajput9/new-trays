@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { appDataDir } from "./certManager";
 
-const LOG_FILE = () => path.join(appDataDir(), "printport.log");
+const LOG_FILE = () => path.join(appDataDir(), "printtrays.log");
 
 function write(level: string, msg: string) {
   const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`;

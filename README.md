@@ -1,8 +1,8 @@
-# PrintPort
+# PrintTrays
 
 A local print-bridge system: a background app (system tray, Node.js + Electron) that gives any web page secure access to OS printers, thermal/label printers, and USB/serial devices over a signed local WebSocket connection — plus a client SDK and marketing/demo site.
 
-This is an original codebase and product (name: **PrintPort**). It does not reuse code, certificates, or branding from any existing print-bridge product.
+This is an original codebase and product (name: **PrintTrays**). It does not reuse code, certificates, or branding from any existing print-bridge product.
 
 ## Layout
 
@@ -53,13 +53,13 @@ Packaging is `electron-builder`, configured in [`server/package.json`](server/pa
 `website/` is a standard Next.js app — `npm run website:build && npm run start --workspace website`, or deploy to any Next.js-compatible host. Before going live:
 
 1. Host the real installer binaries somewhere and update the links in [`website/app/download/page.tsx`](website/app/download/page.tsx).
-2. Replace [`website/public/printport.js`](website/public/printport.js) with the actual built output of `client-sdk` (or serve it from a CDN) rather than the hand-copied demo version.
+2. Replace [`website/public/printtrays.js`](website/public/printtrays.js) with the actual built output of `client-sdk` (or serve it from a CDN) rather than the hand-copied demo version.
 
 ## How the pieces fit together
 
 1. `server` runs in the background, generates a self-signed local CA + TLS cert on first launch (`certManager.ts`), and a separate RSA keypair used only to sign outgoing WebSocket messages (`signing.ts`).
 2. A web page loads `client-sdk`, calls `connect()`, which opens `wss://127.0.0.1:8181` and pins the bridge's signing public key (trust-on-first-use) in `localStorage`.
-3. Every response from the bridge is verified against that pinned key with WebCrypto before the SDK resolves a promise — this is PrintPort's equivalent of QZ Tray's message-signing trust layer, implemented independently.
+3. Every response from the bridge is verified against that pinned key with WebCrypto before the SDK resolves a promise — this is PrintTrays's equivalent of QZ Tray's message-signing trust layer, implemented independently.
 4. `print` / `rawWrite` / `listDevices` requests are dispatched in `wsServer.ts` to `printerService.ts` (OS print spooler via Electron), `rawPrint.ts` (direct TCP/serial byte writes for thermal/label printers), `serialService.ts`, and `usbHidService.ts`.
 5. The tray icon (`tray.ts`) shows live connection count and exposes Open / Restart / Quit / About.
 
