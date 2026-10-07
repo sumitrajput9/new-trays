@@ -9,7 +9,7 @@
  * from some other process squatting on the port.
  */
 
-export type PrintDataType = "pdf" | "html" | "raw" | "zpl" | "escpos";
+export type PrintDataType = "pdf" | "html" | "raw" | "zpl" | "escpos" | "image";
 export type DeviceKind = "usb" | "serial" | "hid";
 
 export interface PrinterInfo {
@@ -17,6 +17,38 @@ export interface PrinterInfo {
   isDefault: boolean;
   status?: string;
   driver?: string;
+}
+
+/** `name` is the option's human-readable display name (e.g. "Letter",
+ *  "Index Card 3 x 5in", "Tray 3") — also what a print job's `paperSize`/
+ *  `inputBin` actually match against, so pass it back verbatim. */
+export interface PrinterOption {
+  name: string;
+}
+
+export interface PrinterMediaSize extends PrinterOption {
+  /** In `units` — reported in microns, straight from Windows' PrintCapabilities XML. */
+  width: number;
+  height: number;
+  units: "micron";
+}
+
+export interface PrinterResolution extends PrinterOption {
+  dpiX: number;
+  dpiY: number;
+}
+
+export interface GetPrinterDetailsResult {
+  sizes: PrinterMediaSize[];
+  /** Discoverable, but NOT currently applied to a print job — there's no
+   *  way yet to set a driver's DPI/quality option through the print
+   *  pipeline (it's a Windows driver DEVMODE setting). */
+  resolutions: PrinterResolution[];
+  /** Discoverable only, same caveat as `resolutions`. */
+  mediaTypes: PrinterOption[];
+  /** Actually usable — pass an option's `name` as `inputBin` on a print job. */
+  inputBins: PrinterOption[];
+  orientations: PrinterOption[];
 }
 
 export interface DeviceInfo {
@@ -56,8 +88,38 @@ export interface PrintOptions {
   margins?: PrintMargins;
   /** Defaults to true (color). Set false for grayscale/black & white. */
   color?: boolean;
-  /** Percentage, e.g. 100 = actual size. */
+  /** type "pdf" only. "fit" (default) scales content to fill the selected
+   *  paper — needed for anything beyond the exact nominal size (e.g. an
+   *  "E2E" borderless media). "actual" prints at the PDF's own defined
+   *  size, no scaling. "custom" scales content by `scaleFactor` percent,
+   *  centered on a same-size page. */
+  scaleMode?: "fit" | "actual" | "custom";
+  /** Percentage for scaleMode "custom", e.g. 50 = half size. Ignored for
+   *  every other scaleMode. */
   scaleFactor?: number;
+  /** type "pdf" only: rasterize server-side and send as a raw image feed
+   *  instead of the OS's PDF-aware print pipeline — much faster on drivers
+   *  that are slow with GDI/PDF jobs, but only works if the printer's queue
+   *  actually accepts a raw image feed. Test before relying on it. */
+  fastRaster?: boolean;
+  /** type "pdf" only, multi-page documents only. "frontToBack" (default)
+   *  prints 1,2,3…N. "backToFront" prints N…3,2,1, so a face-up output tray
+   *  ends up in the right reading order. */
+  pageOrder?: "frontToBack" | "backToFront";
+  /** type "pdf" only: selects a paper source/tray by its display name —
+   *  use a `name` from getPrinterDetails()'s `inputBins`. */
+  inputBin?: string;
+  /** type "image" (and any PDF that is just one full-page photo, which is
+   *  detected automatically): the exact page to print at. Without it, the
+   *  printer's own size of the `paperSize` name is used. */
+  pageSize?: { width: number; height: number; units?: "in" | "mm" | "micron" };
+  /** type "image" only: rotate the picture clockwise on the page. */
+  rotation?: 0 | 90 | 180 | 270;
+  /** Image printing only. "chromium" (default) prints through Chromium's
+   *  engine — the same one Ctrl+P uses — so the driver receives the image
+   *  itself instead of a huge full-page bitmap: much faster on photo
+   *  printers. "sumatra" forces the classic PDF route (JPEG/PNG only). */
+  imageEngine?: "chromium" | "sumatra";
 }
 
 /**
@@ -214,6 +276,17 @@ export class PrintTrays {
 
   async getPrinters(): Promise<PrinterInfo[]> {
     return this.request<PrinterInfo[]>("listPrinters", {});
+  }
+
+  /** The printer's actual sizes, resolutions, media types, input bins, and
+   *  orientations, read live from its Windows PrintCapabilities. All-empty
+   *  on non-Windows or if the query fails — fall back to a static list in
+   *  that case rather than treat it as an error. Note: only `sizes` and
+   *  `inputBins` are currently applicable to a print job (as `paperSize`/
+   *  `inputBin`); `resolutions` and `mediaTypes` are discoverable but not
+   *  yet wired into printing. */
+  async getPrinterDetails(printer: string): Promise<GetPrinterDetailsResult> {
+    return this.request<GetPrinterDetailsResult>("getPrinterDetails", { printer });
   }
 
   async listDevices(type: DeviceKind): Promise<DeviceInfo[]> {

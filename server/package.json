@@ -13,11 +13,16 @@
     "dist:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
-    "ws": "^8.17.0",
+    "@napi-rs/canvas": "^1.0.9",
     "node-forge": "^1.3.1",
+    "node-hid": "^3.1.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-to-printer": "^5.8.1",
+    "pdfjs-dist": "^3.11.174",
     "serialport": "^12.0.0",
+    "unix-print": "^1.3.2",
     "usb": "^2.13.0",
-    "node-hid": "^3.1.0"
+    "ws": "^8.17.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -39,11 +44,25 @@
       "output": "../installers/out"
     },
     "npmRebuild": false,
+    "asarUnpack": [
+      "**/node_modules/pdf-to-printer/**/*",
+      "**/node_modules/@napi-rs/canvas*/**/*"
+    ],
     "extraResources": [
-      { "from": "assets", "to": "assets" }
+      {
+        "from": "assets",
+        "to": "assets"
+      }
     ],
     "win": {
-      "target": [ { "target": "nsis", "arch": [ "x64" ] } ],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "assets/icon.ico",
       "publisherName": "PrintTrays"
     },
@@ -54,7 +73,22 @@
       "include": "../installers/windows/installer.nsh"
     },
     "mac": {
-      "target": [ { "target": "pkg", "arch": [ "x64", "arm64" ] }, { "target": "dmg", "arch": [ "x64", "arm64" ] } ],
+      "target": [
+        {
+          "target": "pkg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
@@ -66,7 +100,10 @@
       "installLocation": "/Applications"
     },
     "linux": {
-      "target": [ "AppImage", "deb" ],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Utility",
       "executableName": "printtrays",

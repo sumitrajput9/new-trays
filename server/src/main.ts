@@ -1,8 +1,21 @@
-import { app } from "electron";
+import { app, dialog } from "electron";
 import { loadOrCreateCertBundle } from "./certManager";
 import { PrintTraysServer, BridgeStatus } from "./wsServer";
 import { createTray } from "./tray";
 import { logger } from "./logger";
+
+// Without this, an unexpected error anywhere (a bad port state, a driver
+// call throwing outside its own try/catch, anything) surfaces as Electron's
+// raw "A JavaScript error occurred in the main process" crash dialog with a
+// stack trace — alarming for an end user and not actionable. Log it and fail
+// visibly-but-calmly instead of crashing hard.
+process.on("uncaughtException", (err) => {
+  logger.error(`Uncaught exception: ${err.stack || err.message}`);
+  dialog.showErrorBox(
+    "PrintTrays hit an unexpected error",
+    `${err.message}\n\nPrintTrays will keep running, but if printing stops working, restart it from the system tray icon.`
+  );
+});
 
 // PrintTrays has no windows/dock icon by default — it is a background bridge
 // that lives in the system tray, matching the "runs on startup, tray only"
@@ -35,6 +48,12 @@ if (!gotLock) {
     const trayHandle = createTray(
       () => currentStatus,
       () => {
+        // app.exit() skips the "before-quit" event entirely (that's
+        // documented Electron behavior), so server?.close() there would
+        // never run on a manual restart — the old process could still hold
+        // its port when the relaunched instance starts up and tries to bind
+        // it. Closing explicitly here, before relaunching, avoids that race.
+        server?.close();
         app.relaunch();
         app.exit(0);
       }

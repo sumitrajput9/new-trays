@@ -18,6 +18,36 @@
 !macro customInit
   DetailPrint "Making sure no previous PrintTrays instance is running..."
   ExecWait 'taskkill /F /IM PrintTrays.exe /T'
+
+  ; PrintTrays was called PrintPort before an earlier rename. Machines that
+  ; had that old build installed end up with two separate apps both able to
+  ; bind the same port and each carrying its own separate, never-mutually-
+  ; trusted certificate — the two silently take turns answering, which looks
+  ; like "print sometimes works, sometimes doesn't" and "certificate keeps
+  ; asking again" from the outside, with no obvious cause to a user. Since a
+  ; leftover PrintPort is never something a normal install is expected to
+  ; leave in a state a user should have to manually diagnose, clean up every
+  ; way it could still be running or auto-starting, every time PrintTrays is
+  ; installed or upgraded — silently, so nobody ever needs to be told to run
+  ; a command for this again.
+  DetailPrint "Cleaning up any previous PrintPort installation..."
+  ExecWait 'taskkill /F /IM PrintPort.exe /T'
+  Delete "$SMSTARTUP\PrintPort.lnk"
+  Delete "$SMPROGRAMS\Startup\PrintPort.lnk"
+  ; Electron's setLoginItemSettings() registers this Run-key value as
+  ; "electron.app.<productName>", NOT the bare product name — confirmed by
+  ; inspecting a real affected machine's registry directly. The bare-name
+  ; deletes below are silent no-ops against the value that's actually there
+  ; (DeleteRegValue on a name that doesn't exist just does nothing, no
+  ; error), which is exactly why this cleanup previously appeared to run
+  ; successfully on every install while never actually removing anything —
+  ; PrintPort kept resurrecting at every login regardless. Deleting both
+  ; forms costs nothing when one doesn't exist, so do both rather than
+  ; assume this naming is consistent across every Electron/build version.
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "PrintPort"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.PrintPort"
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "PrintPort"
+  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.PrintPort"
 !macroend
 
 !macro customInstall
@@ -73,6 +103,23 @@
 !macroend
 
 !macro customUnInstall
+  DetailPrint "Making sure PrintTrays isn't still running..."
+  ExecWait 'taskkill /F /IM PrintTrays.exe /T'
+
   DetailPrint "Removing PrintTrays's local certificate..."
   ExecWait 'certutil -user -delstore "Root" "PrintTrays Local CA"'
+
+  ; app.setLoginItemSettings({ openAtLogin: true }) (main.ts) registers this
+  ; Run-key entry every time PrintTrays starts, but nothing ever un-registers
+  ; it — without this, uninstalling leaves a Startup entry pointing at a now-
+  ; deleted exe, which is exactly the same kind of dead-leftover-autostart
+  ; problem this app has spent a lot of effort cleaning up for the old
+  ; PrintPort build. Not doing this for our own app too would be the same
+  ; mistake happening again, just one rename later.
+  DetailPrint "Removing PrintTrays from Windows startup..."
+  ; Same actual value name as the PrintPort cleanup above: Electron writes
+  ; "electron.app.PrintTrays", not bare "PrintTrays" — delete both forms.
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "PrintTrays"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "electron.app.PrintTrays"
+  Delete "$SMSTARTUP\PrintTrays.lnk"
 !macroend

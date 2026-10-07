@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import Nav from "../components/Nav";
 import Footer from "../components/Footer";
 
@@ -77,13 +78,13 @@ export default function DownloadPage() {
                 {release.available ? (
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     {/* Replace with a real hosted binary URL before shipping. */}
-                    <a className="btn" href={`/releases/${release.file}`}>
+                    <Link className="btn" href={`/releases/${release.file}`}>
                       Download for {release.label}
-                    </a>
+                    </Link>
                     {release.altFile && (
-                      <a className="btn-ghost" href={`/releases/${release.altFile}`}>
+                      <Link className="btn-ghost" href={`/releases/${release.altFile}`}>
                         {release.altLabel}
-                      </a>
+                      </Link>
                     )}
                   </div>
                 ) : (
@@ -109,7 +110,7 @@ export default function DownloadPage() {
             </li>
             <li>Look for the PrintTrays icon in your system tray — that confirms it's running.</li>
             <li>If a website ever shows a one-time certificate prompt, it now opens as a small popup that closes itself and reconnects automatically once you click through it.</li>
-            <li>macOS is still on the roadmap — see the <a href="/docs">docs page</a> for status.</li>
+            <li>macOS is still on the roadmap — see the <Link href="/docs">docs page</Link> for status.</li>
           </ul>
         </section>
       </main>

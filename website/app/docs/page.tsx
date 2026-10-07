@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Nav from "../components/Nav";
 import Footer from "../components/Footer";
 
@@ -27,7 +28,7 @@ export default function DocsPage() {
           <ol style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.9 }}>
             <li>
               <strong>Install PrintTrays</strong> on the machine that has the printer — see{" "}
-              <a href="/download">Download</a>. It runs quietly in the system tray from then on, starting
+              <Link href="/download">Download</Link>. It runs quietly in the system tray from then on, starting
               automatically at login.
             </li>
             <li>

@@ -1,4 +1,4 @@
-export type PrintDataType = "pdf" | "html" | "raw" | "zpl" | "escpos";
+export type PrintDataType = "pdf" | "html" | "raw" | "zpl" | "escpos" | "image";
 
 export type DeviceKind = "usb" | "serial" | "hid";
 
@@ -10,6 +10,46 @@ export interface ConnectionTarget {
 export interface ListPrintersRequest {
   id: string;
   action: "listPrinters";
+}
+
+export interface GetPrinterDetailsRequest {
+  id: string;
+  action: "getPrinterDetails";
+  printer: string;
+}
+
+/** `name` is the option's human-readable display name (e.g. "Letter",
+ *  "Index Card 3 x 5in", "Tray 3") — this is what a UI should show, and
+ *  also what the print pipeline (SumatraPDF) actually matches against when
+ *  selecting a paper size or bin, so pass it back verbatim, not some other
+ *  internal identifier. */
+export interface PrinterOption {
+  name: string;
+}
+
+export interface PrinterMediaSize extends PrinterOption {
+  /** In `units` — Windows' PrintCapabilities XML reports these in microns. */
+  width: number;
+  height: number;
+  units: "micron";
+}
+
+export interface PrinterResolution extends PrinterOption {
+  dpiX: number;
+  dpiY: number;
+}
+
+export interface GetPrinterDetailsResult {
+  sizes: PrinterMediaSize[];
+  /** Discoverable, but NOT currently applied to a print job — the print
+   *  pipeline (SumatraPDF) has no way to set a driver's DPI/quality option;
+   *  changing it would need direct Win32 driver API calls, not built yet. */
+  resolutions: PrinterResolution[];
+  /** Discoverable only, same caveat as `resolutions`. */
+  mediaTypes: PrinterOption[];
+  /** Actually usable — pass an option's `name` as `inputBin` on a print job. */
+  inputBins: PrinterOption[];
+  orientations: PrinterOption[];
 }
 
 export type DuplexMode = "simplex" | "shortEdge" | "longEdge";
@@ -41,8 +81,44 @@ export interface PrintRequest extends ConnectionTarget {
   margins?: PrintMargins;
   /** Defaults to true (color). Set false for grayscale/black & white. */
   color?: boolean;
-  /** Percentage, e.g. 100 = actual size. */
+  /** type "pdf" only. "fit" (default) scales content to fill the selected
+   *  paper — needed for anything beyond the exact nominal size (e.g. an
+   *  "E2E" borderless media). "actual" prints at the PDF's own defined
+   *  size, no scaling. "custom" scales content by `scaleFactor` percent,
+   *  centered on a same-size page — matches how a real print dialog's
+   *  custom-% scale behaves (the sheet size doesn't change, the content
+   *  shrinks/grows within it). */
+  scaleMode?: "fit" | "actual" | "custom";
+  /** Percentage for scaleMode "custom", e.g. 50 = half size. Ignored for
+   *  every other scaleMode. */
   scaleFactor?: number;
+  /** type "pdf" only: rasterize server-side and send as a raw image feed
+   *  instead of going through the OS's PDF-aware print pipeline. Much
+   *  faster on drivers that are slow processing GDI/PDF jobs (e.g. some
+   *  photo-lab printers), but only works if the target printer's queue
+   *  actually accepts a raw image feed — test before relying on it. */
+  fastRaster?: boolean;
+  /** type "pdf" only, multi-page documents only (meaningless for a single
+   *  page). "frontToBack" (default) prints 1,2,3…N. "backToFront" prints
+   *  N…3,2,1, so a face-up output tray ends up in the right reading order. */
+  pageOrder?: "frontToBack" | "backToFront";
+  /** type "pdf" only: selects a paper source/tray by its driver-internal
+   *  option name — use the `name` field from getPrinterDetails()'s
+   *  `inputBins`, not the display name. */
+  inputBin?: string;
+  /** Image printing (type "image", and PDFs that are just one full-page
+   *  photo): the exact page to print at. If omitted, `paperSize` is looked
+   *  up by name in the printer's own reported sizes; failing that, the
+   *  PDF's own page size (or Letter for a bare image) is used. */
+  pageSize?: { width: number; height: number; units?: "in" | "mm" | "micron" };
+  /** Image printing only: rotate the picture clockwise on the page (0, 90,
+   *  180 or 270 degrees). */
+  rotation?: number;
+  /** Image printing only. "chromium" (default) prints through Chromium's
+   *  print engine — the same one Ctrl+P uses — so the driver receives the
+   *  image itself instead of a huge full-page bitmap. "sumatra" forces the
+   *  classic image→PDF→SumatraPDF route (JPEG/PNG only). */
+  imageEngine?: "chromium" | "sumatra";
 }
 
 export interface RawWriteRequest {
@@ -99,6 +175,7 @@ export interface CertificateRequest {
 
 export type IncomingMessage =
   | ListPrintersRequest
+  | GetPrinterDetailsRequest
   | PrintRequest
   | RawWriteRequest
   | UsbControlTransferRequest

@@ -5,7 +5,7 @@ import { app, dialog } from "electron";
 import { CertBundle } from "./certManager";
 import { signEnvelope } from "./signing";
 import { logger } from "./logger";
-import { listPrinters, handlePrint } from "./printerService";
+import { listPrinters, getPrinterDetails, handlePrint } from "./printerService";
 import { listSerialDevices, serialRawWrite } from "./serialService";
 import {
   listUsbDevices,
@@ -49,6 +49,7 @@ export class PrintTraysServer {
   private statusListeners = new Set<StatusListener>();
   private connections = new Set<WebSocket>();
   private boundPort: number | undefined;
+  private candidateIndex = 0;
 
   constructor(private bundle: CertBundle) {
     this.httpsServer = https.createServer({
@@ -66,10 +67,31 @@ export class PrintTraysServer {
     // the HTTP layer never answers, and the request just hangs/times out.
     this.httpsServer.on("request", (req, res) => this.handleHttpRequest(req, res));
 
+    // A single persistent listener for the server's entire lifetime, rather
+    // than tryListen() attaching/detaching its own `.once()` handler per
+    // attempt. Node's EventEmitter throws an 'error' event as an uncaught
+    // exception the moment it has zero listeners attached — and https.Server
+    // (wrapping tls.Server wrapping net.Server) can surface the same bind
+    // failure as more than one 'error' emission. A `.once()` handler removes
+    // itself after the first, leaving a window where a second emission for
+    // that same failure has nothing catching it and crashes the process.
+    // This handler never detaches, so that window never opens.
+    this.httpsServer.on("error", (err: NodeJS.ErrnoException) => this.onListenError(err));
+
     this.tryListen(0);
   }
 
+  private onListenError(err: NodeJS.ErrnoException): void {
+    if (err.code !== "EADDRINUSE" && err.code !== "EACCES") {
+      logger.error(`Bridge server error: ${err.message}`);
+      return;
+    }
+    logger.error(`Port ${PORT_CANDIDATES[this.candidateIndex]} unavailable (${err.code}) — trying the next candidate port...`);
+    this.tryListen(this.candidateIndex + 1);
+  }
+
   private tryListen(candidateIndex: number): void {
+    this.candidateIndex = candidateIndex;
     const port = PORT_CANDIDATES[candidateIndex];
 
     if (port === undefined) {
@@ -82,19 +104,7 @@ export class PrintTraysServer {
       return;
     }
 
-    const onError = (err: NodeJS.ErrnoException) => {
-      this.httpsServer.removeListener("error", onError);
-      if (err.code === "EADDRINUSE" || err.code === "EACCES") {
-        logger.error(`Port ${port} unavailable (${err.code}) — trying the next candidate port...`);
-        this.tryListen(candidateIndex + 1);
-      } else {
-        logger.error(`Bridge server error: ${err.message}`);
-      }
-    };
-
-    this.httpsServer.once("error", onError);
     this.httpsServer.listen(port, "127.0.0.1", () => {
-      this.httpsServer.removeListener("error", onError);
       this.boundPort = port;
       logger.info(`PrintTrays bridge listening on wss://127.0.0.1:${port}`);
       this.notifyStatus();
@@ -159,6 +169,11 @@ export class PrintTraysServer {
         case "listPrinters": {
           const printers: PrinterInfo[] = await listPrinters();
           return this.send(ws, msg, printers);
+        }
+
+        case "getPrinterDetails": {
+          const details = await getPrinterDetails(msg.printer);
+          return this.send(ws, msg, details);
         }
 
         case "print": {
