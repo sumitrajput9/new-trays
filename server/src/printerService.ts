@@ -11,7 +11,7 @@ import { rasterizePdfFirstPageToJpeg } from "./pdfRaster";
 import { scalePdfFirstPage } from "./pdfScale";
 import { PDFDocument } from "pdf-lib";
 import { applyQzCompat } from "./qzCompat";
-import { sniffImage, buildImageHtml, imageToPdfBytes, extractSingleImageFromPdf } from "./imagePrint";
+import { sniffImage, buildImageHtml, imageToPdfBytes, extractSingleImageFromPdf, ImageKind } from "./imagePrint";
 
 function execAsync(cmd: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,11 +49,36 @@ export async function listPrinters(): Promise<PrinterInfo[]> {
 // containing quotes/parens/etc. (very common — "Noritsu 931BL (Tray 1)")
 // can never break out of the PowerShell string or enable injection.
 const GET_PRINTER_DETAILS_PS = `
+$printerName = [Console]::In.ReadLine()
+
 Add-Type -AssemblyName System.Printing
 $ps = New-Object System.Printing.LocalPrintServer
-$q  = $ps.GetPrintQueue([Console]::In.ReadLine())
+$q  = $ps.GetPrintQueue($printerName)
 $sr = New-Object System.IO.StreamReader($q.GetPrintCapabilitiesAsXml())
 $xml = [xml]$sr.ReadToEnd(); $sr.Close()
+
+# System.Printing's PrintCapabilities (above) never attaches a width/height to
+# a driver's "type your own size" option — confirmed, there's genuinely none
+# there. But a DIFFERENT, older Windows layer — the per-user default DEVMODE,
+# the same one GDI-based apps (Chrome included) read — DOES remember the last
+# custom size actually set via the driver's own Properties/Preferences dialog.
+# System.Drawing.Printing.PrinterSettings wraps exactly that legacy DEVMODE
+# API, so if a custom size was ever saved for this user+printer, it shows up
+# here with real numbers, even though it's invisible to every API above.
+$defaultCustom = $null
+try {
+  Add-Type -AssemblyName System.Drawing
+  $gdiSettings = New-Object System.Drawing.Printing.PrinterSettings
+  $gdiSettings.PrinterName = $printerName
+  $gdiPaper = $gdiSettings.DefaultPageSettings.PaperSize
+  if ($gdiPaper.Kind -eq [System.Drawing.Printing.PaperKind]::Custom -and $gdiPaper.Width -gt 0 -and $gdiPaper.Height -gt 0) {
+    $defaultCustom = [PSCustomObject]@{
+      name = $gdiPaper.PaperName
+      widthHundredthsInch = $gdiPaper.Width
+      heightHundredthsInch = $gdiPaper.Height
+    }
+  }
+} catch {}
 
 function Get-FeatureOptions($featureName) {
   $feat = $xml.GetElementsByTagName('psf:Feature') | Where-Object { $_.name -eq $featureName }
@@ -70,11 +95,12 @@ function Get-FeatureOptions($featureName) {
 }
 
 $out = [PSCustomObject]@{
-  sizes        = @(Get-FeatureOptions 'psk:PageMediaSize')
-  resolutions  = @(Get-FeatureOptions 'psk:PageResolution')
-  mediaTypes   = @(Get-FeatureOptions 'psk:PageMediaType')
-  inputBins    = @(Get-FeatureOptions 'psk:JobInputBin')
-  orientations = @(Get-FeatureOptions 'psk:PageOrientation')
+  sizes         = @(Get-FeatureOptions 'psk:PageMediaSize')
+  resolutions   = @(Get-FeatureOptions 'psk:PageResolution')
+  mediaTypes    = @(Get-FeatureOptions 'psk:PageMediaType')
+  inputBins     = @(Get-FeatureOptions 'psk:JobInputBin')
+  orientations  = @(Get-FeatureOptions 'psk:PageOrientation')
+  defaultCustom = $defaultCustom
 }
 $out | ConvertTo-Json -Compress -Depth 6
 `;
@@ -128,6 +154,7 @@ export async function getPrinterDetails(printerName: string): Promise<GetPrinter
     mediaTypes?: RawOption[];
     inputBins?: RawOption[];
     orientations?: RawOption[];
+    defaultCustom?: { name: string; widthHundredthsInch: number; heightHundredthsInch: number } | null;
   };
   try {
     parsed = JSON.parse(stdout || "{}");
@@ -150,6 +177,31 @@ export async function getPrinterDetails(printerName: string): Promise<GetPrinter
     }))
     .filter((s) => Number.isFinite(s.width) && Number.isFinite(s.height));
 
+  // The entry (or entries) filtered out above because they report no fixed
+  // width/height — "PostScript Custom Page Size" on a PostScript driver like
+  // the Noritsu's. PrintCapabilities (above) never attaches dimensions to
+  // this option, for any app — confirmed by direct testing. The option
+  // itself is still real and worth surfacing by name, so a UI can offer
+  // "type your own size" as a distinct, discoverable choice.
+  const customSizeOptionName = sizeRows.find(
+    (r) => r?.props?.["psk:MediaSizeWidth"] == null || r?.props?.["psk:MediaSizeHeight"] == null
+  )?.displayName;
+
+  // A *different* Windows layer than PrintCapabilities: the per-user default
+  // DEVMODE (the same one GDI print pipelines — including Chrome's — read)
+  // does remember the last custom size actually saved through the driver's
+  // own Properties/Preferences dialog, even though it's invisible to every
+  // API above. When present, this lets the custom-size option be offered
+  // pre-filled with a real, live value instead of a blank box every time.
+  const defaultCustomSize: PrinterMediaSize | undefined = parsed.defaultCustom
+    ? {
+        name: parsed.defaultCustom.name,
+        width: Math.round((parsed.defaultCustom.widthHundredthsInch / 100) * MICRONS_PER_INCH),
+        height: Math.round((parsed.defaultCustom.heightHundredthsInch / 100) * MICRONS_PER_INCH),
+        units: "micron" as const,
+      }
+    : undefined;
+
   const resRows = Array.isArray(parsed.resolutions) ? parsed.resolutions : parsed.resolutions ? [parsed.resolutions] : [];
   const resolutions: PrinterResolution[] = resRows
     .filter((r) => r?.props?.["psk:ResolutionX"] != null && r?.props?.["psk:ResolutionY"] != null)
@@ -160,12 +212,24 @@ export async function getPrinterDetails(printerName: string): Promise<GetPrinter
     }))
     .filter((r) => Number.isFinite(r.dpiX) && Number.isFinite(r.dpiY));
 
+  // Fires on every "get printer details" call — i.e. whenever the demo page
+  // loads/reconnects, no actual print needed — specifically so this one
+  // value can be checked just by opening the page, instead of needing a
+  // full print test each time.
+  logger.info(
+    `getPrinterDetails: customSizeOptionName=${customSizeOptionName ? `"${customSizeOptionName}"` : "(not found)"} defaultCustomSize=${
+      defaultCustomSize ? `${defaultCustomSize.width}x${defaultCustomSize.height} microns` : "(not found)"
+    }`
+  );
+
   return {
     sizes,
     resolutions,
     mediaTypes: toPlainOptions(parsed.mediaTypes),
     inputBins: toPlainOptions(parsed.inputBins),
     orientations: toPlainOptions(parsed.orientations),
+    ...(customSizeOptionName ? { customSizeOptionName } : {}),
+    ...(defaultCustomSize ? { defaultCustomSize } : {}),
   };
 }
 
@@ -173,7 +237,27 @@ export async function getPrinterDetails(printerName: string): Promise<GetPrinter
  *  print() options — duplex/orientation/paper size/margins/color are all
  *  already supported by Chromium's print pipeline, just not previously
  *  exposed through PrintTrays's own API. */
-function buildElectronPrintOptions(req: PrintRequest, printer: string, copies: number): Electron.WebContentsPrintOptions {
+// Electron's own `pageSize` option only recognizes these six exact strings —
+// anything else (every one of this driver's own named sizes: "5 x 7in E2E",
+// "Legal13", "8.5\"SQ", …) silently doesn't match, and Electron falls back
+// to some default instead of erroring, which looked like a random/wrong
+// orientation with no obvious cause. A name outside this set has to be
+// resolved to real {width, height} microns first — the same lookup already
+// used for an image job — not passed through as a bare string.
+const ELECTRON_BUILTIN_PAGE_SIZES = new Set(["A3", "A4", "A5", "Legal", "Letter", "Tabloid"]);
+
+async function buildElectronPrintOptions(
+  req: PrintRequest,
+  printer: string,
+  copies: number
+): Promise<Electron.WebContentsPrintOptions> {
+  let pageSize: Electron.WebContentsPrintOptions["pageSize"];
+  if (req.paperSize && ELECTRON_BUILTIN_PAGE_SIZES.has(req.paperSize)) {
+    pageSize = req.paperSize as Electron.WebContentsPrintOptions["pageSize"];
+  } else if (req.paperSize) {
+    const m = await lookupPaperMicrons(printer, req.paperSize).catch(() => null);
+    if (m) pageSize = { width: m.w, height: m.h };
+  }
   return {
     silent: true,
     deviceName: printer,
@@ -182,7 +266,7 @@ function buildElectronPrintOptions(req: PrintRequest, printer: string, copies: n
     color: req.color,
     scaleFactor: req.scaleFactor,
     duplexMode: req.duplex,
-    pageSize: req.paperSize,
+    ...(pageSize ? { pageSize } : {}),
     margins: req.margins,
   };
 }
@@ -193,8 +277,9 @@ async function printRendered(html: string, req: PrintRequest, printer: string, c
   const win = new BrowserWindow({ show: false, webPreferences: { plugins: true } });
   try {
     await win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+    const printOptions = await buildElectronPrintOptions(req, printer, copies);
     await new Promise<void>((resolve, reject) => {
-      win.webContents.print(buildElectronPrintOptions(req, printer, copies), (ok, failureReason) => {
+      win.webContents.print(printOptions, (ok, failureReason) => {
         if (ok) resolve();
         else reject(new Error(failureReason || "print failed"));
       });
@@ -239,7 +324,7 @@ async function reversedPageRange(pdfBytes: Buffer): Promise<string | undefined> 
  *  load events fixes it (see electron/electron#26448). So PDFs are handed
  *  directly to the OS's own PDF-capable print pipeline instead: SumatraPDF
  *  on Windows (bundled by pdf-to-printer), CUPS lp on macOS/Linux. */
-async function printPdfBase64(base64: string, req: PrintRequest, printer: string, copies = 1): Promise<void> {
+async function printPdfBase64(base64: string, req: PrintRequest, printer: string, copies = 1, paperSizeOverride?: string): Promise<void> {
   const tmp = path.join(os.tmpdir(), `printtrays-${Date.now()}.pdf`);
   let bytes: Buffer = Buffer.from(base64, "base64");
 
@@ -270,7 +355,7 @@ async function printPdfBase64(base64: string, req: PrintRequest, printer: string
     logger.info(
       `PDF print debug: saved copy to ${debugPath} | byteLength=${bytes.length} | header="${bytes
         .subarray(0, 8)
-        .toString("latin1")}" | printer="${printer}" | paperSize=${req.paperSize ?? "(default)"} | duplex=${
+        .toString("latin1")}" | printer="${printer}" | paperSize=${paperSizeOverride ?? req.paperSize ?? "(default)"} | duplex=${
         req.duplex ?? "(none)"
       } | color=${req.color !== false} | landscape=${!!req.landscape} | copies=${copies}`
     );
@@ -289,7 +374,7 @@ async function printPdfBase64(base64: string, req: PrintRequest, printer: string
         orientation: req.landscape ? "landscape" : "portrait",
         monochrome: req.color === false,
         side: req.duplex ? DUPLEX_TO_SUMATRA[req.duplex] : "simplex",
-        paperSize: req.paperSize,
+        paperSize: paperSizeOverride ?? req.paperSize,
         bin: req.inputBin,
         ...(pages ? { pages } : {}),
         // Without this, SumatraPDF defaults to "shrink" — it only scales
@@ -301,8 +386,17 @@ async function printPdfBase64(base64: string, req: PrintRequest, printer: string
         // borderless size is for. "fit" scales the content to fill the
         // selected paper (up or down) while keeping its aspect ratio.
         // "actual"/"custom" both want SumatraPDF to leave the page alone —
-        // for "custom" the content was already pre-scaled above.
-        scale: req.scaleMode === "actual" || req.scaleMode === "custom" ? "noscale" : "fit",
+        // for "custom" the content was already pre-scaled above. The
+        // custom-size driver-default flow (`useDriverDefaultSize`) is the
+        // same situation: the PDF page here is already built at exactly the
+        // target size (imageToPdfBytes), so no further scaling should be
+        // needed — confirmed on real hardware that "fit" was still leaving
+        // blank margins top/bottom despite the page already being correctly
+        // sized and the right named paper being selected, which "fit"
+        // scaling to some other number SumatraPDF associates with that
+        // paper name would fully explain. "noscale" removes that scaling
+        // decision entirely instead of continuing to guess at it.
+        scale: req.scaleMode === "actual" || req.scaleMode === "custom" || req.useDriverDefaultSize ? "noscale" : "fit",
       });
       logger.info("PDF print debug: printPdfWindows() resolved without error");
     } else {
@@ -436,22 +530,45 @@ async function printImageChromium(
   try {
     await win.loadFile(htmlPath);
     await win.webContents.executeJavaScript("Promise.all(Array.from(document.images).map(function(i){return i.decode();}))");
+    const electronPrintOptions = {
+      silent: true,
+      deviceName: printer,
+      copies,
+      printBackground: true,
+      color: req.color !== false,
+      margins: { marginType: "none" as const },
+      ...(req.duplex ? { duplexMode: req.duplex } : {}),
+      // This function is never called for the custom-size driver-default
+      // flow (`useDriverDefaultSize`) — see printImage() below, which routes
+      // that case through the classic SumatraPDF engine instead, since
+      // Electron's own page-size handling turned out to have a real bug for
+      // that specific driver/custom-size combination (three different
+      // compensation attempts here each failed in a different way; Adobe
+      // and SumatraPDF, which both go through the standard Windows print
+      // path instead of Chromium's own, get it right without any of this).
+      // For every other (non-custom-size) job, both options below are
+      // required explicitly — `landscape` being left out previously made
+      // Electron fall back to whatever orientation was left over from a
+      // previous job, and `pageSize` being left out made it fall back to
+      // the printer's current default size, not the one actually requested.
+      landscape: w > h,
+      // Chromium takes the page size portrait-oriented and applies `landscape` on top.
+      pageSize: { width: Math.min(w, h), height: Math.max(w, h) },
+    };
+    // Exactly what gets handed to Electron/the Windows driver — the single
+    // most useful line for checking "what did PrintTrays actually ask the
+    // printer to do" against what came out of the printer.
+    logger.info(`image print (chromium): webContents.print() options -> ${JSON.stringify(electronPrintOptions)}`);
     await new Promise<void>((resolve, reject) => {
-      win.webContents.print(
-        {
-          silent: true,
-          deviceName: printer,
-          copies,
-          printBackground: true,
-          color: req.color !== false,
-          landscape: w > h,
-          margins: { marginType: "none" },
-          // Chromium takes the page size portrait-oriented and applies `landscape` on top.
-          pageSize: { width: Math.min(w, h), height: Math.max(w, h) },
-          ...(req.duplex ? { duplexMode: req.duplex } : {}),
-        },
-        (ok, failureReason) => (ok ? resolve() : reject(new Error(failureReason || "print failed")))
-      );
+      win.webContents.print(electronPrintOptions, (ok, failureReason) => {
+        if (ok) {
+          logger.info("image print (chromium): webContents.print() reported success");
+          resolve();
+        } else {
+          logger.error(`image print (chromium): webContents.print() reported failure — ${failureReason || "unknown reason"}`);
+          reject(new Error(failureReason || "print failed"));
+        }
+      });
     });
   } finally {
     win.destroy();
@@ -468,12 +585,375 @@ async function printImageViaPdf(
   copies: number,
   fallbackPt?: [number, number]
 ): Promise<void> {
-  const kind = sniffImage(image);
   const { w, h } = await resolvePageMicrons(req, printer, fallbackPt);
+  const kind = sniffImage(image);
   const pdf = kind ? await imageToPdfBytes(image, kind, w / MICRONS_PER_INCH, h / MICRONS_PER_INCH) : null;
   if (!pdf) throw new Error("The classic print engine only supports JPEG and PNG images");
   await printPdfBase64(pdf.toString("base64"), req, printer, copies);
 }
+
+/** Flips an image's pixels 180 degrees (no dimension swap, unlike a 90°
+ *  rotation). Re-encodes as PNG when the source was PNG (lossless — a
+ *  design with flat colors/text/logos shows visible JPEG blocking
+ *  otherwise) and JPEG only as a fallback for other formats. See
+ *  printImageViaSumatraClassic's doc comment — this is specifically the
+ *  1.3.13-era compensation, brought back deliberately at the user's
+ *  explicit request after 1.3.25 (built on a real, confirmed technical
+ *  fix) still didn't produce a correct result on real hardware. Known
+ *  tradeoff, not a secret: this exact combination (classic SumatraPDF
+ *  engine + 180° pre-rotation) was the one found later to depend on the
+ *  driver's shared, mutable custom-size state — it looked right in that
+ *  one test, but was never confirmed consistent across repeated prints,
+ *  which is why the project moved away from it. Restored here as an
+ *  explicit, deliberate choice, not a rediscovery. */
+async function rotateImage180(image: Buffer, kind: ImageKind): Promise<Buffer> {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const img = await loadImage(image);
+  const canvas = createCanvas(img.width, img.height);
+  const ctx = canvas.getContext("2d");
+  ctx.translate(canvas.width, canvas.height);
+  ctx.rotate(Math.PI);
+  ctx.drawImage(img, 0, 0);
+  return kind.mime === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg", 0.95);
+}
+
+/** The exact 1.3.13-era custom-size path, restored deliberately: classic
+ *  SumatraPDF engine, the driver's custom-size slot selected by name, and
+ *  a 180° content pre-rotation to compensate for this driver's upside-down
+ *  behavior on that engine. Confirmed on real hardware (white border on all
+ *  four sides) that removing overscan entirely (1.3.28/1.3.29) reintroduced
+ *  this driver's real non-printable margin as a visible unprinted gap — the
+ *  3%/7% percentage guesses were replaced with nothing instead of with the
+ *  right number. The driver's own developer then gave the actual fixed
+ *  margin: 0.57in width, 0.49in height (NOT a percentage — doesn't scale
+ *  with page size, confirmed by the two axes being different percentages
+ *  of this specific page: 0.57/6.48=8.8%, 0.49/8.76=5.6%, which also lines
+ *  up with the ~5.6% minimum separately measured earlier via
+ *  PageSettings.PrintableArea for the height axis). The PDF page itself
+ *  stays at the exact requested size (matching the physical paper the
+ *  driver was told to use by name, since SumatraPDF prints this path with
+ *  scale:"noscale" — a smaller/larger PDF page than the physical paper
+ *  leaves blank paper, confirmed separately) — only the drawn image bleeds
+ *  past the page edge by this fixed margin, centered. */
+const E2E_BLEED_IN = { w: 0.57, h: 0.49 };
+
+async function printImageViaSumatraClassic(
+  image: Buffer,
+  req: PrintRequest,
+  printer: string,
+  copies: number,
+  fallbackPt?: [number, number]
+): Promise<void> {
+  const { w, h } = await resolvePageMicrons(req, printer, fallbackPt);
+  const kind = sniffImage(image);
+  const finalImage = kind ? await rotateImage180(image, kind) : image;
+  const finalKind = kind ? (kind.mime === "image/png" ? kind : { mime: "image/jpeg", ext: "jpg" }) : kind;
+
+  let paperSizeOverride: string | undefined;
+  try {
+    const details = await getPrinterDetails(printer);
+    paperSizeOverride = details.customSizeOptionName;
+    if (paperSizeOverride?.includes(",")) {
+      logger.warn(`classic engine (1.3.13 path): customSizeOptionName contains a comma ("${paperSizeOverride}") — skipping it to avoid corrupting SumatraPDF's settings string`);
+      paperSizeOverride = undefined;
+    }
+    logger.info(
+      paperSizeOverride
+        ? `classic engine (1.3.13 path): using the driver's custom-size option by name -> "${paperSizeOverride}"`
+        : `classic engine (1.3.13 path): printer reported no customSizeOptionName — paperSize will be left unset`
+    );
+  } catch (err) {
+    logger.warn(`classic engine (1.3.13 path): couldn't look up the driver's custom-size option name: ${(err as Error).message}`);
+  }
+
+  const pdf = finalKind
+    ? await imageToPdfBytes(
+        finalImage,
+        finalKind,
+        w / MICRONS_PER_INCH,
+        h / MICRONS_PER_INCH,
+        1,
+        E2E_BLEED_IN.w,
+        E2E_BLEED_IN.h,
+        undefined,
+        true // independent axis scaling — see imageToPdfBytes' doc comment; cuts the extra crop that uniform
+        // scaling forces on whichever axis has more natural slack, at the cost of a mild aspect stretch.
+      )
+    : null;
+  if (!pdf) throw new Error("The classic print engine only supports JPEG and PNG images");
+
+  // Local, no-printer-needed coverage check — same idea as preview-print.js,
+  // but built from the exact same code path as the real print instead of a
+  // hand-rolled approximation, and saved alongside the real debug PDF so a
+  // gap can be caught before it ever reaches a physical print. A real
+  // uncovered gap and the PDF's own default white page background are
+  // visually identical, which is exactly why the 1.3.28/1.3.29 white-border
+  // bug wasn't visible in the normal debug PDF — filling the page black
+  // first makes any gap obvious at a glance.
+  if (finalKind) {
+    try {
+      const diagPdf = await imageToPdfBytes(
+        finalImage,
+        finalKind,
+        w / MICRONS_PER_INCH,
+        h / MICRONS_PER_INCH,
+        1,
+        E2E_BLEED_IN.w,
+        E2E_BLEED_IN.h,
+        { r: 0, g: 0, b: 0 },
+        true // must match the real print's independentAxisScale setting above, or this coverage check
+        // would be verifying different math than what actually gets sent to the printer.
+      );
+      if (diagPdf) {
+        const debugDir = path.join(os.homedir(), "AppData", "Roaming", "PrintTrays", "debug-prints");
+        fs.mkdirSync(debugDir, { recursive: true });
+        const diagPath = path.join(debugDir, `printtrays-debug-${Date.now()}-coverage-check.pdf`);
+        fs.writeFileSync(diagPath, diagPdf);
+        logger.info(
+          `classic engine (1.3.13 path): coverage check saved to ${diagPath} — any black visible around the photo means a real uncovered gap at this exact size; open and check before trusting a physical print`
+        );
+      }
+    } catch (err) {
+      logger.warn(`classic engine (1.3.13 path): couldn't save coverage-check PDF: ${(err as Error).message}`);
+    }
+  }
+
+  await printPdfBase64(pdf.toString("base64"), req, printer, copies, paperSizeOverride);
+}
+
+// Along the way, also confirmed the driver's "type your own size" slot is
+// shared, mutable state — its remembered width/height changes whenever
+// *anything* (Adobe, Ctrl+P, a different PrintTrays job) last saved a
+// different value through it. Checked the same named slot twice in one
+// session: 648x876 the first time, 1150x1749 the second, with nothing in
+// our own code changed in between — why nothing that selected a paper *by
+// name* was ever going to be reliable, and why printImageViaDevmode below
+// sends its own exact size with every job instead.
+//
+// A raw-PostScript-direct-to-spooler approach was also tried and removed:
+// this driver turned out not to be a true PostScript RIP, so bypassing the
+// Windows driver's translation step (the same way Adobe appeared to) left
+// the printer holding data it couldn't understand — the job reached
+// "SUCCESS" in our own log but nothing physically printed. See
+// printImageViaDevmode's doc comment for where that left things.
+// Confirmed on real hardware: this driver is NOT a true PostScript RIP —
+// it's a Windows PostScript-*class* driver that does essential translation
+// into the printer's own proprietary protocol. Sending raw PostScript
+// straight to the spooler (printImageViaPostScript, above) bypasses that
+// translation on purpose, same as Adobe appeared to — but on real hardware
+// the job was accepted into the queue ("SUCCESS" in our own log) and then
+// nothing physically printed at all, because the printer never understood
+// the raw PostScript it was handed. So Adobe must be going through this
+// same driver after all, triggering something correctly that explicit
+// GDI-level requests (Electron, SumatraPDF, this function) haven't found
+// yet — not bypassing it, as the PostScript attempt assumed. Back to this
+// known-working baseline (correct size and paper selection, confirmed on
+// real hardware; orientation still unresolved) while that gets re-examined,
+// since *something* physically printing is strictly better than nothing.
+async function printImageViaDevmode(image: Buffer, req: PrintRequest, printer: string, copies: number, fallbackPt?: [number, number]): Promise<void> {
+  const { w, h } = await resolvePageMicrons(req, printer, fallbackPt);
+  const widthIn = w / MICRONS_PER_INCH;
+  const heightIn = h / MICRONS_PER_INCH;
+
+  const tmp = path.join(os.tmpdir(), `printtrays-devmode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`);
+  fs.writeFileSync(tmp, image);
+
+  // Saves exactly the image this job sends to the driver — same purpose as
+  // the debug copies elsewhere in this file: lets a "did it print wrong"
+  // report be checked against the real input instead of guessed at, and
+  // lets preview-print.js be run against the *actual* file from a real
+  // test instead of only a hand-made one.
+  const debugDir = path.join(os.homedir(), "AppData", "Roaming", "PrintTrays", "debug-prints");
+  try {
+    fs.mkdirSync(debugDir, { recursive: true });
+    const debugPath = path.join(debugDir, `printtrays-debug-${Date.now()}.jpg`);
+    fs.writeFileSync(debugPath, image);
+    logger.info(`print (devmode): saved copy to ${debugPath}`);
+  } catch (err) {
+    logger.warn(`print (devmode): failed to save debug copy: ${(err as Error).message}`);
+  }
+
+  try {
+    const payload = JSON.stringify({
+      printer,
+      imagePath: tmp,
+      widthIn,
+      heightIn,
+      color: req.color !== false,
+      copies,
+      // Measured directly on real hardware via .NET's PageSettings.PrintableArea
+      // for this exact custom size: printable area is inset by ~18 hundredths-
+      // inch (~0.18in) on every side. 7% leaves a small safety margin above
+      // the precisely measured ~5.6% needed.
+      overscan: 1.07,
+    });
+    logger.info(`print (devmode): requesting ${widthIn.toFixed(2)}x${heightIn.toFixed(2)}in, explicit PaperSize, printer="${printer}"`);
+    const stdout = await new Promise<string>((resolve, reject) => {
+      const child = execFile(
+        "powershell",
+        ["-NoProfile", "-NonInteractive", "-Command", PRINT_VIA_DEVMODE_PS],
+        { windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
+        (err, out, errOut) => (err ? reject(new Error(errOut || err.message)) : resolve(out))
+      );
+      child.stdin?.write(payload + "\n");
+      child.stdin?.end();
+    });
+    if (!stdout.includes("PRINTTRAYS_DEVMODE_PRINT_OK")) {
+      throw new Error(`Unexpected output from print-via-devmode script: ${stdout.trim()}`);
+    }
+    logger.info(`print (devmode): printed successfully — ${stdout.trim()}`);
+  } finally {
+    fs.unlink(tmp, () => undefined);
+  }
+}
+
+// The driver's own PPD file states outright, in a comment, that it does
+// not use the standard PostScript orientation parameter for custom page
+// sizes at all ("Orientation and Margin (offsets) values are not
+// utilized") — explaining why forcing Landscape=false (the previous
+// attempt) could never have worked; it's not a bug, it's documented
+// driver behavior. The PPD separately exposes a real, driver-specific
+// rotation feature ("Page Rotate" / OKEnvRotate), set from the driver's
+// own Properties dialog — but every version up to this one built a brand
+// new PaperSize object from scratch for each job, which likely resets
+// that and every other driver-private setting back to its default each
+// time, silently discarding whatever was configured in the dialog.
+// Instead of constructing settings from scratch, this reads the printer's
+// *current* DEVMODE (which already reflects whatever's set in the driver's
+// own Properties dialog — Page Rotate included) and patches only the two
+// fields that actually need to change (paper width/height, in DEVMODE's
+// native unit of tenths of a millimeter) directly in the raw bytes,
+// leaving every other field — Page Rotate above all — exactly as the
+// dialog has it.
+const PRINT_VIA_DEVMODE_PS = `
+$ErrorActionPreference = "Stop"
+$json = [Console]::In.ReadLine()
+$p = ConvertFrom-Json $json
+
+Add-Type -AssemblyName System.Drawing
+
+# Confirmed by direct comparison on real hardware: .NET's own GetHdevmode()
+# does NOT faithfully return the printer's true current settings — it comes
+# back 64 bytes smaller than the devmode the raw Win32 DocumentProperties
+# API returns for the exact same printer at the exact same moment. That gap
+# is almost certainly why Ctrl+P and Adobe (which go through the real Win32
+# path) have printed this exact custom size correctly while every one of
+# our own attempts, including the previous version of this function that
+# patched .NET's (apparently already-wrong) devmode, did not. This bypasses
+# .NET's devmode retrieval entirely and calls DocumentProperties directly —
+# the same API Windows' own printing pipeline uses — then patches only the
+# two size fields in *that* buffer before handing it to .NET for drawing.
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class PrintTraysDevmode {
+    [DllImport("kernel32.dll")] public static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+    [DllImport("kernel32.dll")] public static extern IntPtr GlobalLock(IntPtr hMem);
+    [DllImport("kernel32.dll")] public static extern bool GlobalUnlock(IntPtr hMem);
+    [DllImport("winspool.Drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+    public static extern bool OpenPrinter(string printerName, out IntPtr hPrinter, IntPtr pd);
+    [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+    [DllImport("winspool.Drv", EntryPoint = "DocumentPropertiesA", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+    public static extern int DocumentProperties(IntPtr hwnd, IntPtr hPrinter, string pDeviceName, IntPtr pDevModeOutput, IntPtr pDevModeInput, int fMode);
+
+    public const uint GMEM_MOVEABLE = 0x2;
+    public const int DM_OUT_BUFFER = 2;
+
+    // Returns a GlobalAlloc'd HGLOBAL (same convention PrinterSettings.
+    // SetHdevmode expects) containing the printer's TRUE current devmode,
+    // read via the real Win32 API instead of .NET's lossy wrapper.
+    public static IntPtr GetTrueCurrentHdevmode(string printerName) {
+        IntPtr hPrinter;
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero))
+            throw new Exception("OpenPrinter failed: " + Marshal.GetLastWin32Error());
+        try {
+            int size = DocumentProperties(IntPtr.Zero, hPrinter, printerName, IntPtr.Zero, IntPtr.Zero, 0);
+            if (size <= 0) throw new Exception("DocumentProperties size query failed: " + Marshal.GetLastWin32Error());
+            IntPtr hGlobal = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)size);
+            if (hGlobal == IntPtr.Zero) throw new Exception("GlobalAlloc failed");
+            IntPtr pDevMode = GlobalLock(hGlobal);
+            try {
+                int result = DocumentProperties(IntPtr.Zero, hPrinter, printerName, pDevMode, IntPtr.Zero, DM_OUT_BUFFER);
+                if (result < 0) throw new Exception("DocumentProperties DM_OUT_BUFFER failed: " + Marshal.GetLastWin32Error());
+            } finally {
+                GlobalUnlock(hGlobal);
+            }
+            return hGlobal;
+        } finally {
+            ClosePrinter(hPrinter);
+        }
+    }
+}
+"@
+
+$img = [System.Drawing.Image]::FromFile($p.imagePath)
+try {
+  $ps = New-Object System.Drawing.Printing.PrinterSettings
+  $ps.PrinterName = $p.printer
+  if ([int]$p.copies -gt 1) { $ps.Copies = [int16]$p.copies }
+
+  # Standard DEVMODEW field offsets (fixed by the Win32 API spec, not
+  # driver-specific — only the bytes AFTER this fixed block are
+  # driver-private, and those are the ones being left untouched here).
+  $OFFSET_DMFIELDS = 72
+  $OFFSET_DMPAPERSIZE = 78
+  $OFFSET_DMPAPERLENGTH = 80
+  $OFFSET_DMPAPERWIDTH = 82
+  $OFFSET_DMCOLOR = 92
+  $DM_PAPERSIZE = 0x2; $DM_PAPERLENGTH = 0x4; $DM_PAPERWIDTH = 0x8; $DM_COLOR = 0x800
+  $DMPAPER_USER = 256
+  $DMCOLOR_MONOCHROME = 1; $DMCOLOR_COLOR = 2
+
+  # DEVMODE paper dimensions are in tenths of a millimeter, not hundredths
+  # of an inch (that unit is specific to System.Drawing.Printing.PaperSize,
+  # which isn't used here at all).
+  $widthTenthsMm = [int16]([Math]::Round([double]$p.widthIn * 25.4 * 10))
+  $heightTenthsMm = [int16]([Math]::Round([double]$p.heightIn * 25.4 * 10))
+
+  $hDevMode = [PrintTraysDevmode]::GetTrueCurrentHdevmode($p.printer)
+  $pDevMode = [PrintTraysDevmode]::GlobalLock($hDevMode)
+  try {
+    $fields = [System.Runtime.InteropServices.Marshal]::ReadInt32($pDevMode, $OFFSET_DMFIELDS)
+    $fields = $fields -bor $DM_PAPERSIZE -bor $DM_PAPERLENGTH -bor $DM_PAPERWIDTH -bor $DM_COLOR
+    [System.Runtime.InteropServices.Marshal]::WriteInt32($pDevMode, $OFFSET_DMFIELDS, $fields)
+    [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMPAPERSIZE, [int16]$DMPAPER_USER)
+    [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMPAPERLENGTH, $heightTenthsMm)
+    [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMPAPERWIDTH, $widthTenthsMm)
+    $colorValue = if ([bool]$p.color) { $DMCOLOR_COLOR } else { $DMCOLOR_MONOCHROME }
+    [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMCOLOR, [int16]$colorValue)
+  } finally {
+    [PrintTraysDevmode]::GlobalUnlock($hDevMode) | Out-Null
+  }
+  $ps.SetHdevmode($hDevMode)
+  $ps.DefaultPageSettings.SetHdevmode($hDevMode)
+
+  $doc = New-Object System.Drawing.Printing.PrintDocument
+  $doc.PrinterSettings = $ps
+  $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
+
+  $overscan = [double]$p.overscan
+
+  $handler = {
+    param($sender, $e)
+    $pageW = $e.PageBounds.Width
+    $pageH = $e.PageBounds.Height
+    $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $scale = [Math]::Max($pageW / $img.Width, $pageH / $img.Height) * $overscan
+    $dw = $img.Width * $scale
+    $dh = $img.Height * $scale
+    $x = ($pageW - $dw) / 2
+    $y = ($pageH - $dh) / 2
+    $e.Graphics.DrawImage($img, $x, $y, $dw, $dh)
+  }
+  $doc.add_PrintPage($handler)
+  $doc.Print()
+  Write-Output "PRINTTRAYS_DEVMODE_PRINT_OK"
+} finally {
+  $img.Dispose()
+}
+`;
 
 async function printImage(
   image: Buffer,
@@ -482,6 +962,21 @@ async function printImage(
   copies: number,
   fallbackPt?: [number, number]
 ): Promise<void> {
+  // Electron's webContents.print(), SumatraPDF, a direct .NET PrintDocument
+  // (preserving the driver's current settings, then rewritten again to use
+  // the true Win32 devmode instead of .NET's own, confirmed-incomplete
+  // version of it), and a raw PostScript document sent straight to the
+  // spooler were all tried in turn — each grounded in real, confirmed
+  // technical evidence, none of them yet confirmed correct on real
+  // hardware for orientation. At the user's explicit, repeated, deliberate
+  // request, this now uses the earlier (1.3.13-era) classic SumatraPDF
+  // path instead — the one version that showed a correct orientation on
+  // real hardware, even though it's built on a foundation (the driver's
+  // shared, mutable custom-size state) later proven unreliable across
+  // repeated tests. This is a known, explicit tradeoff, not a step taken
+  // without understanding its risk — see printImageViaSumatraClassic's doc
+  // comment for the full reasoning on both sides.
+  if (req.useDriverDefaultSize) return printImageViaSumatraClassic(image, req, printer, copies, fallbackPt);
   if (req.imageEngine === "sumatra") return printImageViaPdf(image, req, printer, copies, fallbackPt);
   try {
     await printImageChromium(image, req, printer, copies, fallbackPt);
@@ -494,7 +989,33 @@ async function printImage(
   }
 }
 
-export async function handlePrint(req: PrintRequest): Promise<void> {
+// wsServer's `ws.on("message", ...)` handler doesn't await its listener, so
+// two print requests arriving close together (e.g. clicking "Send a test
+// print" right after "Upload and print", before the first has finished —
+// a single job here takes several seconds) were free to run fully
+// concurrently, both hitting the OS print spooler/the physical printer at
+// the same time with no ordering guarantee at all. On an ordinary sheet-fed
+// printer that's merely wasteful; on this roll-fed one it let two entirely
+// different jobs print onto the *same* physical sheet with no cut between
+// them — exactly the double-exposed, two-designs-overlapping sheet seen on
+// real hardware. This queue forces every print request through this module
+// to run strictly one at a time, in arrival order, regardless of which
+// browser tab or button triggered it.
+let printQueue: Promise<void> = Promise.resolve();
+
+export function handlePrint(req: PrintRequest): Promise<void> {
+  const run = printQueue.then(() => handlePrintQueued(req));
+  // The queue chain itself must never reject, or every print after a single
+  // failed job would be silently dropped — each caller still sees its own
+  // success/failure via the returned promise.
+  printQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+async function handlePrintQueued(req: PrintRequest): Promise<void> {
   // Some real integrations (qrinto.com) send QZ-Tray-shaped option names
   // instead of PrintTrays's own — fill in the native fields from those
   // before anything below reads them, so those requests aren't silently
@@ -502,8 +1023,39 @@ export async function handlePrint(req: PrintRequest): Promise<void> {
   applyQzCompat(req as unknown as Record<string, unknown>);
 
   const copies = req.copies ?? 1;
-  logger.info(`print -> printer="${req.printer}" type=${req.type} copies=${copies} fastRaster=${!!req.fastRaster}`);
+  // A short id per job plus a START/END banner — several test prints in a
+  // row all land in the same printtrays.log file, so without a clear marker
+  // it's hard to tell where one job's lines end and the next one's begin.
+  // Everything a single handlePrint() call logs (including from the chromium
+  // print helper below) happens between its own START and END banner — now
+  // actually true, not just asserted, since the queue above guarantees jobs
+  // are handled one at a time, not interleaved.
+  const jobId = `${new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14)}-${Math.random().toString(36).slice(2, 6)}`;
+  const jobStart = Date.now();
+  const sizeSummary = req.pageSize
+    ? `${req.pageSize.width}x${req.pageSize.height}${req.pageSize.units ?? ""}`
+    : req.paperSize
+      ? String(req.paperSize)
+      : "(printer default)";
+  logger.info(
+    `========== PRINT JOB ${jobId} START — printer="${req.printer}" type=${req.type} size=${sizeSummary} landscape=${!!req.landscape} useDriverDefaultSize=${!!req.useDriverDefaultSize} copies=${copies} ==========`
+  );
+  // Full request, minus the (huge, base64) file payload — this is the one
+  // line that shows every setting that was actually received server-side,
+  // so a print result can be cross-checked against what the browser sent
+  // without needing DevTools access on the machine that's printing.
+  logger.info(`print request (full, data omitted): ${JSON.stringify({ ...req, data: `<${req.data?.length ?? 0} chars>` })}`);
 
+  try {
+    await dispatchPrint(req, copies);
+    logger.info(`========== PRINT JOB ${jobId} END — SUCCESS (${Date.now() - jobStart}ms) ==========`);
+  } catch (err) {
+    logger.error(`========== PRINT JOB ${jobId} END — FAILED after ${Date.now() - jobStart}ms: ${(err as Error).message} ==========`);
+    throw err;
+  }
+}
+
+async function dispatchPrint(req: PrintRequest, copies: number): Promise<void> {
   switch (req.type) {
     case "html":
       return printRendered(req.data, req, req.printer, copies);
@@ -518,12 +1070,39 @@ export async function handlePrint(req: PrintRequest): Promise<void> {
       // Explicit scale choices ("actual"/"custom") are a document concept and
       // keep the classic route. Anything that isn't provably a plain photo
       // page returns null here and prints exactly as before.
+      //
+      // For an E2E/bleed paper size, that detection is deliberately loosened
+      // to also catch a photo placed with margins (not just exactly
+      // full-page) — the point of picking an E2E size is a borderless
+      // result, so it's cropped to fill regardless of how the source PDF
+      // placed it. For a nominal (non-E2E) size, the stricter full-page-only
+      // check is kept, unchanged from before — a document's own layout on a
+      // bordered sheet is left alone, since nothing about a nominal size
+      // implies "fill the sheet no matter what."
       const wantsFit = !req.scaleMode || req.scaleMode === "fit";
       if (req.imageEngine !== "sumatra" && wantsFit) {
-        const single = await extractSingleImageFromPdf(Buffer.from(req.data, "base64")).catch(() => null);
+        const targetLooksE2E = /e2e|borderless|full[\s-]?bleed/i.test(String(req.paperSize ?? ""));
+        const single = await extractSingleImageFromPdf(Buffer.from(req.data, "base64"), !targetLooksE2E).catch(() => null);
         if (single) {
           logger.info("print: PDF is a single full-page photo — printing the image directly");
           return printImage(single.jpeg, req, req.printer, copies, [single.widthPt, single.heightPt]);
+        }
+
+        // A genuine multi-element document, but the caller gave an explicit
+        // pageSize — i.e. "print this at exactly this size" rather than any
+        // size the driver already has a name for. SumatraPDF's `paperSize`
+        // can only select a size the driver already knows about (see
+        // printPdfBase64 below); it has no way to request an arbitrary
+        // width/height. Electron's own print API does support that directly
+        // (the same mechanism Chrome/Acrobat use for a typed custom size),
+        // which is exactly what the image path below already relies on — so
+        // route through it the same way a photo does: rasterize page 1 (this
+        // only covers the first page; a multi-page document at a custom size
+        // isn't supported yet) and crop-fill it onto the requested size.
+        if (req.pageSize && req.pageSize.width > 0 && req.pageSize.height > 0) {
+          logger.info("print: PDF with an explicit custom pageSize — rasterizing page 1 for the custom-size image path");
+          const jpeg = await rasterizePdfFirstPageToJpeg(Buffer.from(req.data, "base64"));
+          return printImage(jpeg, req, req.printer, copies);
         }
       }
       return printPdfBase64(req.data, req, req.printer, copies);

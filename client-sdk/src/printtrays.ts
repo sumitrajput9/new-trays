@@ -49,6 +49,20 @@ export interface GetPrinterDetailsResult {
   /** Actually usable — pass an option's `name` as `inputBin` on a print job. */
   inputBins: PrinterOption[];
   orientations: PrinterOption[];
+  /** The driver's own name for its "type a custom size" option (e.g.
+   *  "PostScript Custom Page Size"), present only if the driver offers one.
+   *  Not in `sizes` — Windows never attaches a fixed width/height to this
+   *  option for any app, so there's nothing to size it by. List it as a real
+   *  choice in a paper-size picker; when chosen, prompt for a typed
+   *  width/height and send it as `pageSize` on the print request. */
+  customSizeOptionName?: string;
+  /** The real width/height last saved for that custom-size option, if any —
+   *  from a different Windows layer than `customSizeOptionName` (the one
+   *  Chrome's own print pipeline reads), which is why it can have a real
+   *  value even though the option itself never does. Pre-fill the
+   *  width/height prompt with this instead of leaving it blank, when
+   *  present — still editable, it's a remembered value, not a guarantee. */
+  defaultCustomSize?: PrinterMediaSize;
 }
 
 export interface DeviceInfo {
@@ -113,6 +127,15 @@ export interface PrintOptions {
    *  detected automatically): the exact page to print at. Without it, the
    *  printer's own size of the `paperSize` name is used. */
   pageSize?: { width: number; height: number; units?: "in" | "mm" | "micron" };
+  /** Image printing only. Set this when `pageSize` was read directly from
+   *  `getPrinterDetails()`'s `defaultCustomSize` (i.e. it's the printer's
+   *  own current default for that driver/user, not an arbitrary one-off
+   *  value) — it tells PrintTrays to leave page size/orientation out of
+   *  what it explicitly overrides and use the printer's current default
+   *  instead, which already carries that size's own feed-direction/E2E
+   *  configuration — something an explicit {width,height} override alone
+   *  doesn't carry over. */
+  useDriverDefaultSize?: boolean;
   /** type "image" only: rotate the picture clockwise on the page. */
   rotation?: 0 | 90 | 180 | 270;
   /** Image printing only. "chromium" (default) prints through Chromium's

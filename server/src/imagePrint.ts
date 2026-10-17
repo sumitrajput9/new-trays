@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName, PDFDict, PDFArray, PDFRawStream, decodePDFRawStream } from "pdf-lib";
+import { PDFDocument, PDFName, PDFDict, PDFArray, PDFRawStream, decodePDFRawStream, rgb } from "pdf-lib";
 
 export interface ImageKind {
   mime: string;
@@ -39,17 +39,59 @@ html,body{margin:0;padding:0;height:0;overflow:visible;background:#fff}
 </style></head><body><div class="page"><img class="pic" src="${imgFile}"></div></body></html>`;
 }
 
-/** Classic-engine fallback: wrap a JPEG/PNG into a one-page PDF exactly the size of the paper, cropped to fill. */
-export async function imageToPdfBytes(image: Buffer, kind: ImageKind, wIn: number, hIn: number): Promise<Buffer | null> {
+
+/** Classic-engine fallback: wrap a JPEG/PNG into a one-page PDF exactly the size of the paper, cropped to fill.
+ *  `overscan` (1 = none) draws the image slightly larger than the page and lets the page's own edge clip the
+ *  overflow — the same deliberate-bleed trick Adobe's print dialog applies automatically (seen at 101% scale
+ *  on this exact driver/paper) to guarantee true edge-to-edge coverage despite any non-printable hardware
+ *  margin: printing at exactly 100% of the nominal size shows that margin as a thin unprinted border, however
+ *  small it is, while a slight deliberate overflow pushes content past it with nothing left unprinted.
+ *  `bleedWIn`/`bleedHIn` (inches, 0 = none) do the same thing but as a FIXED amount rather than a percentage —
+ *  this driver's real non-printable margin is a fixed inches value (given directly by the driver's own
+ *  developer: 0.57in width, 0.49in height) and is NOT proportional to the page size, so a flat percentage
+ *  overscan can only ever be correct for one specific page size at a time. The page itself stays exactly
+ *  wIn x hIn (matching the physical paper the driver was told to use) — only the drawn image is sized larger
+ *  and centered, bleeding past the page edge by half the margin on each side.
+ *  `diagBackground`, when given, fills the whole page with that color BEFORE drawing the image — purely a
+ *  local verification aid (the white-border bug that shipped in 1.3.28/1.3.29 was invisible in the saved
+ *  debug PDF precisely because a real gap and the PDF's own default white page background look identical; a
+ *  high-contrast fill makes any uncovered gap immediately obvious without a real print). Never pass this for
+ *  the PDF that's actually sent to the printer — only for a separate, debug-only copy.
+ *  `independentAxisScale`, when true, scales width and height separately instead of by one uniform factor —
+ *  each axis gets exactly its own minimum required bleed, no more. With uniform scaling (the default), when
+ *  the image's own aspect ratio doesn't match the page's, whichever axis needs the bigger zoom to satisfy its
+ *  bleed "drags" the other axis along with it (since one scale factor affects both dimensions equally),
+ *  overshooting that axis's own requirement — confirmed on a real 1427x2000 test image where width needed a
+ *  bigger zoom than height, and height ended up cropped by roughly double what it actually needed. Independent
+ *  scaling fixes that at the cost of a mild aspect-ratio stretch (the two axes' scale factors can now differ),
+ *  which is the tradeoff the user explicitly asked to try for designs with text close to the edge. */
+export async function imageToPdfBytes(
+  image: Buffer,
+  kind: ImageKind,
+  wIn: number,
+  hIn: number,
+  overscan = 1,
+  bleedWIn = 0,
+  bleedHIn = 0,
+  diagBackground?: { r: number; g: number; b: number },
+  independentAxisScale = false
+): Promise<Buffer | null> {
   if (kind.mime !== "image/jpeg" && kind.mime !== "image/png") return null;
   const doc = await PDFDocument.create();
   const emb = kind.mime === "image/jpeg" ? await doc.embedJpg(image) : await doc.embedPng(image);
   const W = wIn * 72;
   const H = hIn * 72;
-  const s = Math.max(W / emb.width, H / emb.height);
-  const dw = emb.width * s;
-  const dh = emb.height * s;
+  const targetW = (wIn + bleedWIn) * 72;
+  const targetH = (hIn + bleedHIn) * 72;
+  const sUniform = Math.max(targetW / emb.width, targetH / emb.height) * overscan;
+  const sx = independentAxisScale ? (targetW / emb.width) * overscan : sUniform;
+  const sy = independentAxisScale ? (targetH / emb.height) * overscan : sUniform;
+  const dw = emb.width * sx;
+  const dh = emb.height * sy;
   const page = doc.addPage([W, H]);
+  if (diagBackground) {
+    page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(diagBackground.r / 255, diagBackground.g / 255, diagBackground.b / 255) });
+  }
   page.drawImage(emb, { x: (W - dw) / 2, y: (H - dh) / 2, width: dw, height: dh });
   return Buffer.from(await doc.save()) as Buffer;
 }
@@ -67,8 +109,15 @@ function multiply(m: Matrix, n: Matrix): Matrix {
   ];
 }
 
-/** True only if the content stream is nothing but "draw one image over the whole page". */
-function isFullPageImageOnly(content: string, w: number, h: number): boolean {
+/**
+ * True only if the content stream is nothing but "draw one image" — once,
+ * anywhere on the page. When `requireFullPage` is true, that one image must
+ * also cover the entire page (within 1% tolerance); when false, any
+ * placement counts (margins, undersized, off-centre — all fine). Either way,
+ * any other operator (text, paths, colour, clipping…) means this is a real
+ * document, not a plain photo wrapper, and disqualifies it.
+ */
+function isSingleImageOnly(content: string, w: number, h: number, requireFullPage: boolean): boolean {
   const tokens = content.split(/\s+/).filter(Boolean);
   const stack: Matrix[] = [];
   let ctm: Matrix = [1, 0, 0, 1, 0, 0];
@@ -110,21 +159,30 @@ function isFullPageImageOnly(content: string, w: number, h: number): boolean {
       return false;
     }
   }
-  return draws === 1 && covers && stack.length === 0;
+  return draws === 1 && stack.length === 0 && (!requireFullPage || covers);
 }
 
 const nameOf = (v: unknown): string => String(v);
 
 /**
- * If `pdfBytes` is a single page that is just one full-page JPEG (which is
- * exactly what a browser-side "wrap this photo in a PDF" step produces),
- * return the JPEG itself plus the page size in points. Anything else —
- * text, several images, masks, odd colour spaces, rotation, more than one
- * page — returns null and is printed the normal way, so real documents are
- * never altered.
+ * If `pdfBytes` is a single page that is just one JPEG, return the JPEG
+ * itself plus the page size in points. Anything else — text, several
+ * images, masks, odd colour spaces, rotation, more than one page — returns
+ * null and is printed the normal way, so real documents are never altered.
+ *
+ * `requireFullPage` controls how strict the "just one photo" test is:
+ * - `true` (default): the image must already fill the entire page — exactly
+ *   what a browser-side "wrap this photo in a PDF" step produces. Safe as a
+ *   default for a nominal (non-bleed) target size, since it changes nothing
+ *   about how the page is laid out.
+ * - `false`: any placement counts, including margins or an undersized
+ *   image. Intended only for an E2E/bleed target size, where the point is
+ *   to fill the sheet edge-to-edge regardless of how the source PDF placed
+ *   its photo — the original placement is discarded either way.
  */
 export async function extractSingleImageFromPdf(
-  pdfBytes: Buffer
+  pdfBytes: Buffer,
+  requireFullPage = true
 ): Promise<{ jpeg: Buffer; widthPt: number; heightPt: number } | null> {
   const doc = await PDFDocument.load(pdfBytes, { updateMetadata: false });
   if (doc.getPageCount() !== 1) return null;
@@ -135,7 +193,7 @@ export async function extractSingleImageFromPdf(
   const resources = page.node.Resources();
   if (!resources) return null;
   // (No "has fonts" check: some libraries add an empty Font entry to every
-  // page. Text can only appear via text operators, which isFullPageImageOnly
+  // page. Text can only appear via text operators, which isSingleImageOnly
   // below rejects.)
   const xobjects = resources.lookupMaybe(PDFName.of("XObject"), PDFDict);
   if (!xobjects) return null;
@@ -166,7 +224,7 @@ export async function extractSingleImageFromPdf(
     if (!(s instanceof PDFRawStream)) return null;
     text += Buffer.from(decodePDFRawStream(s).decode()).toString("latin1") + "\n";
   }
-  if (!isFullPageImageOnly(text, width, height)) return null;
+  if (!isSingleImageOnly(text, width, height, requireFullPage)) return null;
 
   const jpeg = Buffer.from(img.getContents());
   if (sniffImage(jpeg)?.mime !== "image/jpeg") return null;

@@ -3,6 +3,8 @@ dist/
 .next/
 out/
 installers/out/
+print-trays/
+*.exe
 *.zip
 *.log
 *.tsbuildinfo

@@ -5,7 +5,7 @@ export default function Nav() {
     <div className="container">
       <nav className="nav">
         <Link href="/" className="brand">
-          <span className="mark" />
+          <span className="mark">P</span>
           PrintTrays
         </Link>
         <div className="nav-links">

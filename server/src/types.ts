@@ -50,6 +50,24 @@ export interface GetPrinterDetailsResult {
   /** Actually usable — pass an option's `name` as `inputBin` on a print job. */
   inputBins: PrinterOption[];
   orientations: PrinterOption[];
+  /** The driver's own name for its "type a custom size" option (e.g.
+   *  "PostScript Custom Page Size"), present only if the driver offers one.
+   *  It's deliberately not in `sizes` — Windows never attaches a fixed
+   *  width/height to this option, for any application, so there's nothing to
+   *  size it by. Surfaced here so a UI can still list it as a real, named
+   *  choice and prompt for a typed width/height when it's picked, via
+   *  `pageSize` on the print request, instead of it just being silently
+   *  missing from the list. */
+  customSizeOptionName?: string;
+  /** The real width/height last saved for that custom-size option, if any —
+   *  read from a different Windows layer (the per-user default DEVMODE, the
+   *  same one Chrome's print pipeline reads) than `customSizeOptionName`'s
+   *  option list, which never has one. Present only if someone has actually
+   *  set and saved a custom size for this printer before, through the
+   *  driver's own Properties/Preferences dialog. Use it to pre-fill the
+   *  width/height prompt instead of leaving it blank — still editable, since
+   *  it's a remembered value, not a guarantee of what this job needs. */
+  defaultCustomSize?: PrinterMediaSize;
 }
 
 export type DuplexMode = "simplex" | "shortEdge" | "longEdge";
@@ -111,6 +129,15 @@ export interface PrintRequest extends ConnectionTarget {
    *  up by name in the printer's own reported sizes; failing that, the
    *  PDF's own page size (or Letter for a bare image) is used. */
   pageSize?: { width: number; height: number; units?: "in" | "mm" | "micron" };
+  /** Image printing only. Set this when `pageSize` was read directly from
+   *  `defaultCustomSize` (i.e. it IS the printer's own current default for
+   *  this driver/user, not an arbitrary one-off value) — it tells the print
+   *  call to leave the page size/orientation out of what it explicitly
+   *  overrides and fall back to the printer's current default instead. That
+   *  default already carries the driver's own custom-size feed direction
+   *  and E2E/bleed configuration for that exact size, which an explicit
+   *  {width,height} override doesn't carry over — only the two numbers. */
+  useDriverDefaultSize?: boolean;
   /** Image printing only: rotate the picture clockwise on the page (0, 90,
    *  180 or 270 degrees). */
   rotation?: number;

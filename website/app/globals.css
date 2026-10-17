@@ -58,8 +58,17 @@ a:hover {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), #1e6fd9);
-  display: inline-block;
+  /* Matches the app icon exactly (server/scripts/generate-icons.js) — green
+     per the client's branding request, kept separate from --accent (blue),
+     which still drives buttons/links site-wide. */
+  background: linear-gradient(135deg, #34d399, #059669);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .nav-links {

@@ -1,6 +1,6 @@
 {
   "name": "@printtrays/client-sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Browser SDK for talking to the local PrintTrays bridge app from any web page.",
   "main": "dist/printtrays.js",
   "types": "dist/printtrays.d.ts",
