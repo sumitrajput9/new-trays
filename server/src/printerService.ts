@@ -722,14 +722,18 @@ async function rotateImage180(image: Buffer, kind: ImageKind): Promise<Buffer> {
  *  scale:"noscale" — a smaller/larger PDF page than the physical paper
  *  leaves blank paper, confirmed separately) — only the drawn image bleeds
  *  past the page edge by this fixed margin, centered.
- *  UPDATE: set to zero at the user's explicit request ("nothing trim") —
- *  this is a known, deliberate return to 1.3.28/1.3.29's exact behavior,
- *  which was already confirmed on real hardware to produce a white border
- *  on all four sides. Shipped anyway because the user wants to see/accept
- *  that tradeoff directly rather than take it on description. If the white
- *  border reappears (expected), the fix is raising this back toward
- *  0.57/0.49, not chasing zero further. */
-const E2E_BLEED_IN = { w: 0, h: 0 };
+ *  UPDATE: was set to zero (1.3.34) at the user's explicit request to test
+ *  "nothing trim" — confirmed on real hardware to reintroduce the white
+ *  border, exactly as predicted. Setting a custom size's printer-preference
+ *  to a "padded" size instead (nominal + 0.57/0.49) was also tried as a
+ *  workaround, and also failed — the non-printable margin is a fixed
+ *  hardware limitation of the printer itself, independent of whatever page
+ *  size is declared, so software-side bleed is required regardless of what
+ *  the printer preference says. FINAL: restored to the full driver-given
+ *  value, the only one actually proven correct on real hardware across
+ *  multiple tests (1.3.33) — no white border, minor/acceptable crop only.
+ *  Not revisiting this number again without new hardware evidence. */
+const E2E_BLEED_IN = { w: 0.57, h: 0.49 };
 
 async function printImageViaSumatraClassic(
   image: Buffer,
