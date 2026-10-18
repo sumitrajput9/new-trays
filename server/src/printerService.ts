@@ -672,8 +672,15 @@ async function rotateImage180(image: Buffer, kind: ImageKind): Promise<Buffer> {
  *  driver was told to use by name, since SumatraPDF prints this path with
  *  scale:"noscale" — a smaller/larger PDF page than the physical paper
  *  leaves blank paper, confirmed separately) — only the drawn image bleeds
- *  past the page edge by this fixed margin, centered. */
-const E2E_BLEED_IN = { w: 0.57, h: 0.49 };
+ *  past the page edge by this fixed margin, centered.
+ *  UPDATE: set to zero at the user's explicit request ("nothing trim") —
+ *  this is a known, deliberate return to 1.3.28/1.3.29's exact behavior,
+ *  which was already confirmed on real hardware to produce a white border
+ *  on all four sides. Shipped anyway because the user wants to see/accept
+ *  that tradeoff directly rather than take it on description. If the white
+ *  border reappears (expected), the fix is raising this back toward
+ *  0.57/0.49, not chasing zero further. */
+const E2E_BLEED_IN = { w: 0, h: 0 };
 
 async function printImageViaSumatraClassic(
   image: Buffer,
