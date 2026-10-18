@@ -1060,21 +1060,24 @@ async function printImage(
   copies: number,
   fallbackPt?: [number, number]
 ): Promise<void> {
-  // Electron's webContents.print(), SumatraPDF, a direct .NET PrintDocument
-  // (preserving the driver's current settings, then rewritten again to use
-  // the true Win32 devmode instead of .NET's own, confirmed-incomplete
-  // version of it), and a raw PostScript document sent straight to the
-  // spooler were all tried in turn — each grounded in real, confirmed
-  // technical evidence, none of them yet confirmed correct on real
-  // hardware for orientation. At the user's explicit, repeated, deliberate
-  // request, this now uses the earlier (1.3.13-era) classic SumatraPDF
-  // path instead — the one version that showed a correct orientation on
-  // real hardware, even though it's built on a foundation (the driver's
-  // shared, mutable custom-size state) later proven unreliable across
-  // repeated tests. This is a known, explicit tradeoff, not a step taken
-  // without understanding its risk — see printImageViaSumatraClassic's doc
-  // comment for the full reasoning on both sides.
-  if (req.useDriverDefaultSize) return printImageViaSumatraClassic(image, req, printer, copies, fallbackPt);
+  // REVERTED (back to v1.2.0's mechanism): custom/E2E-size images used to be
+  // routed to printImageViaSumatraClassic — a whole separate code path
+  // (SumatraPDF + the driver's custom-size slot selected by name + a 180°
+  // rotation compensation + fixed-inch bleed) built up over many versions
+  // this session to fix a white-border/orientation problem that was
+  // believed to be specific to Chromium's handling of this exact custom
+  // size. v1.2.0 (confirmed still running correctly in production on
+  // qrinto.com right now, and re-verified on real hardware today) never had
+  // any of that — it just sent every image, custom size or not, through
+  // Chromium's own webContents.print() with an explicit pageSize, no
+  // special-casing at all. Given direct, current, production evidence that
+  // the plain Chromium path handles this driver's custom/E2E sizes
+  // correctly, custom-size images now go through the same Chromium path as
+  // every other image — matching v1.2.0's simpler, proven mechanism instead
+  // of carrying forward architecture built to work around a problem that
+  // may not have been Chromium's to begin with. printImageViaSumatraClassic
+  // is left in the file, unused, rather than deleted, in case real-hardware
+  // testing of this revert surfaces a case where it's still needed.
   if (req.imageEngine === "sumatra") return printImageViaPdf(image, req, printer, copies, fallbackPt);
   try {
     await printImageChromium(image, req, printer, copies, fallbackPt);

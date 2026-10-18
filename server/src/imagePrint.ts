@@ -17,13 +17,26 @@ export function sniffImage(b: Buffer): ImageKind | null {
 }
 
 /**
- * A one-page HTML document that shows `imgFile` covering the whole page
- * (crop-to-fill, no gaps), optionally rotated and/or scaled about the page
+ * A one-page HTML document that shows `imgFile` entirely within the page
+ * (contain — never crops), optionally rotated and/or scaled about the page
  * centre. This is printed through Chromium's own print engine — the same
  * one Ctrl+P uses — which hands the driver the image itself (a few hundred
  * KB) instead of a full-page bitmap at the driver's DPI (tens of MB).
  * `.page` is position:fixed so it adds no flow height, which keeps the job
  * to exactly one page regardless of rounding in the page size.
+ *
+ * `object-fit:contain`, not `cover` — matches qrinto.com's own production
+ * print agent (PrintExecutor.cs: `Math.Min(bounds.Width/image.Width,
+ * bounds.Height/image.Height)`, the contain formula, not Math.Max/cover),
+ * found by reading its actual source after the user confirmed it prints
+ * custom/E2E sizes without cropping, today, in production. `cover` was the
+ * root cause of every "crop" complaint this whole session — it guarantees
+ * zero gap by cropping whatever doesn't fit; `contain` guarantees zero crop
+ * by accepting a gap on the non-matching axis if the image's own aspect
+ * ratio doesn't exactly equal the page's. Given the user has now explicitly
+ * chosen "never crop" over "never gap" (the opposite of every earlier
+ * request in this session, each of which asked for zero gap specifically),
+ * this is not a bug fix so much as a deliberate trade-off swap.
  */
 export function buildImageHtml(imgFile: string, wIn: number, hIn: number, rotation: number, factor: number): string {
   const bw = wIn * factor;
@@ -35,7 +48,7 @@ export function buildImageHtml(imgFile: string, wIn: number, hIn: number, rotati
 @page{size:${wIn}in ${hIn}in;margin:0}
 html,body{margin:0;padding:0;height:0;overflow:visible;background:#fff}
 .page{position:fixed;left:0;top:0;width:${wIn}in;height:${hIn}in;overflow:hidden;background:#fff}
-.pic{position:absolute;left:50%;top:50%;width:${iw}in;height:${ih}in;object-fit:cover;transform:translate(-50%,-50%) rotate(${rotation}deg)}
+.pic{position:absolute;left:50%;top:50%;width:${iw}in;height:${ih}in;object-fit:contain;transform:translate(-50%,-50%) rotate(${rotation}deg)}
 </style></head><body><div class="page"><img class="pic" src="${imgFile}"></div></body></html>`;
 }
 
