@@ -376,16 +376,17 @@ export default function DemoPage() {
         if (Math.abs(gapX) <= 1 && Math.abs(gapY) <= 1) {
           setPreviewVerdictText("Fills the page exactly — no gap, nothing cropped.");
           setPreviewVerdictGood(true);
+          setPreviewNoteText("The entire image always prints — nothing is ever cropped.");
         } else {
           const msgs: string[] = [];
           if (gapX > 1) msgs.push(`${fmtGapIn(gapX, pxPerIn)} gap left/right`);
           if (gapY > 1) msgs.push(`${fmtGapIn(gapY, pxPerIn)} gap top/bottom`);
-          setPreviewVerdictText(`Full image, nothing cropped — ${msgs.join(" and ")}.`);
-          setPreviewVerdictGood(null);
+          setPreviewVerdictText(`Full image, nothing cropped — shown here with a ${msgs.join(" and ")} to illustrate the shape mismatch.`);
+          setPreviewVerdictGood(true);
+          setPreviewNoteText(
+            "This gap won't actually print: before sending, the image is automatically padded (not cropped — a soft edge-extend, no real content removed) to exactly match the paper's shape, so the bridge's own fit has nothing left to leave a gap for."
+          );
         }
-        setPreviewNoteText(
-          "The entire image always prints — nothing is ever cropped. A gap shown here appears on paper too, unless this is an E2E preset sized exactly as the driver's margin + your image's own size, where it falls inside the printer's non-printable edge instead."
-        );
         return;
       } else if (pdfPreviewDocRef.current) {
         const page = await pdfPreviewDocRef.current.getPage(1);
@@ -531,25 +532,94 @@ export default function DemoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paperSize, useCustomSize, customWidthIn, customHeightIn, scaleMode, scalePercent, landscape, printerDetails]);
 
+  // Pads (never crops) an image so its own canvas ratio exactly matches the
+  // target paper's ratio, by stretching a thin slice of its own edge pixels
+  // into new space on whichever axis is short — not a solid-color border,
+  // so it reads as a soft, blended extension instead of a stark line. This
+  // is the opposite of the pre-crop removed earlier: nothing here ever
+  // removes real content, it only adds non-destructive padding, so the
+  // backend's contain-fit renders with zero gap (padding fills the
+  // mismatch itself) instead of a visible gap on the page.
+  async function buildPaddedImageBlob(targetWIn: number, targetHIn: number): Promise<Blob | null> {
+    if (!pdfFile) return null;
+    const url = URL.createObjectURL(pdfFile);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("couldn't load image"));
+        el.src = url;
+      });
+      const imgW = img.naturalWidth;
+      const imgH = img.naturalHeight;
+      const targetRatio = targetWIn / targetHIn;
+      const imgRatio = imgW / imgH;
+      // Already matches closely enough — padding would just add noise.
+      if (Math.abs(imgRatio - targetRatio) < 0.001) return null;
+
+      let padW = imgW;
+      let padH = imgH;
+      if (imgRatio > targetRatio) {
+        // Image is relatively wider than target — pad top/bottom.
+        padH = Math.round(imgW / targetRatio);
+      } else {
+        // Image is relatively taller than target — pad left/right.
+        padW = Math.round(imgH * targetRatio);
+      }
+      const offsetX = Math.round((padW - imgW) / 2);
+      const offsetY = Math.round((padH - imgH) / 2);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = padW;
+      canvas.height = padH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      // Stretch a 1px slice of the nearest edge to fill each padding strip —
+      // a soft blended extension rather than a hard-edged solid color.
+      if (offsetY > 0) {
+        ctx.drawImage(img, 0, 0, imgW, 1, 0, 0, padW, offsetY); // top
+        ctx.drawImage(img, 0, imgH - 1, imgW, 1, 0, offsetY + imgH, padW, padH - offsetY - imgH); // bottom
+      }
+      if (offsetX > 0) {
+        ctx.drawImage(img, 0, 0, 1, imgH, 0, offsetY, offsetX, imgH); // left
+        ctx.drawImage(img, imgW - 1, 0, 1, imgH, offsetX + imgW, offsetY, padW - offsetX - imgW, imgH); // right
+      }
+      ctx.drawImage(img, offsetX, offsetY, imgW, imgH);
+
+      const isPng = pdfFile.type === "image/png";
+      return await new Promise((resolve) => canvas.toBlob((b) => resolve(b), isPng ? "image/png" : "image/jpeg", 0.95));
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   async function handlePrintPdf() {
     if (!ppRef || !selected || !pdfFile) return;
     setPdfPrinting(true);
     appendLog(`Reading "${pdfFile.name}" (${(pdfFile.size / 1024).toFixed(0)} KB)...`);
     try {
-      // REVERTED the client-side pre-crop: the bridge now uses contain-fit
-      // server-side (matching qrinto.com's production print agent, which
-      // never crops — see printImageChromium's dispatch comment) — it shows
-      // the entire image, never cutting anything off, accepting a small gap
-      // on one axis if the image's own aspect ratio doesn't already match
-      // the page's. Pre-cropping here to force a ratio match would silently
-      // defeat that: the crop would already have happened before the
-      // bridge ever saw the file, making its contain-fit a no-op and
-      // reintroducing exactly the "cropped content" problem contain-fit was
-      // adopted to eliminate. Sending the original file lets the bridge's
-      // contain-fit be the only thing that ever touches framing.
+      // The bridge uses contain-fit server-side (matching qrinto.com's
+      // production print agent) — it shows the entire image, never
+      // cropping, accepting a gap on one axis if the image's own aspect
+      // ratio doesn't already match the page's. Rather than send the raw
+      // file and let that gap show up on the page, pad the image here
+      // (non-destructively — stretches a thin edge slice into new space,
+      // never removes real content) so its own canvas ratio already
+      // matches the target before it ever reaches the bridge — the
+      // backend's contain-fit then renders with zero gap because there's
+      // nothing left to reconcile.
       const isImage = pdfFile.type.startsWith("image/");
       const [wIn, hIn] = getSelectedPaperInches();
-      const base64 = await readFileAsBase64(pdfFile);
+      let base64: string;
+      if (isImage) {
+        let [targetWIn, targetHIn] = [wIn, hIn];
+        if (landscape) [targetWIn, targetHIn] = [targetHIn, targetWIn];
+        const paddedBlob = await buildPaddedImageBlob(targetWIn, targetHIn);
+        base64 = paddedBlob ? await readFileAsBase64(paddedBlob) : await readFileAsBase64(pdfFile);
+      } else {
+        base64 = await readFileAsBase64(pdfFile);
+      }
       appendLog(
         `Sending "${pdfFile.name}" to "${selected}" (${useCustomSize ? "custom size" : paperSize}, ${wIn.toFixed(2)} × ${hIn.toFixed(2)} in${
           landscape ? ", landscape" : ""
