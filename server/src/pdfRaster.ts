@@ -29,13 +29,16 @@ class NapiCanvasFactory {
 }
 
 /**
- * Renders a PDF's first page to a JPEG at a given DPI, entirely in-process
- * (no GDI/EMF, no printer driver involved). This exists purely so the print
- * pipeline can hand a printer a flat raster image instead of a PDF — see
- * printerService.ts's printPdfViaRasterRaw() for why that matters for speed
- * on drivers that process GDI/PDF jobs far slower than a raw raster feed.
+ * Renders a PDF's first page to a raster image at a given DPI, entirely
+ * in-process (no GDI/EMF, no printer driver involved). This exists for two
+ * different callers with different needs: printPdfViaRasterRaw() wants a
+ * compact JPEG for a fast raw-feed print (speed matters more than
+ * losslessness there, and it's an opt-in path). The custom-size PDF path
+ * wants PNG — same reasoning as rotateImage180's PNG preservation for image
+ * uploads: a PDF that's a flat-color/text poster shows visible JPEG
+ * blocking at this DPI, which PNG avoids. `format` lets each caller choose.
  */
-export async function rasterizePdfFirstPageToJpeg(pdfBytes: Buffer, dpi = 300): Promise<Buffer> {
+export async function rasterizePdfFirstPage(pdfBytes: Buffer, format: "jpeg" | "png" = "jpeg", dpi = 300): Promise<Buffer> {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js");
   const { createCanvas } = await import("@napi-rs/canvas");
 
@@ -62,7 +65,7 @@ export async function rasterizePdfFirstPageToJpeg(pdfBytes: Buffer, dpi = 300): 
     const { canvas, context } = canvasFactory.create(Math.ceil(viewport.width), Math.ceil(viewport.height));
     await page.render({ canvasContext: context, viewport }).promise;
 
-    return canvas.toBuffer("image/jpeg", 0.92);
+    return format === "png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg", 0.92);
   } finally {
     await doc.destroy();
   }

@@ -1,6 +1,6 @@
 {
   "name": "printtrays-server",
-  "version": "1.3.31",
+  "version": "1.3.32",
   "description": "PrintTrays background bridge — Electron tray app + local WSS server for printer/serial/USB access from the browser.",
   "main": "dist/main.js",
   "homepage": "https://printtrays.example.com",

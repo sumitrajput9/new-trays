@@ -7,7 +7,7 @@ import { print as printPdfWindows } from "pdf-to-printer";
 import { print as printPdfUnix } from "unix-print";
 import { PrinterInfo, PrintRequest, PrinterMediaSize, PrinterOption, PrinterResolution, GetPrinterDetailsResult } from "./types";
 import { logger } from "./logger";
-import { rasterizePdfFirstPageToJpeg } from "./pdfRaster";
+import { rasterizePdfFirstPage } from "./pdfRaster";
 import { scalePdfFirstPage } from "./pdfScale";
 import { PDFDocument } from "pdf-lib";
 import { applyQzCompat } from "./qzCompat";
@@ -448,7 +448,7 @@ async function printRawToSpooler(bytes: Buffer, printer: string): Promise<void> 
  *  every printer's queue the way a real PDF-aware driver call is. */
 async function printPdfViaRasterRaw(base64: string, printer: string): Promise<void> {
   const pdfBytes = Buffer.from(base64, "base64");
-  const jpeg = await rasterizePdfFirstPageToJpeg(pdfBytes);
+  const jpeg = await rasterizePdfFirstPage(pdfBytes, "jpeg");
   logger.info(`PDF fast-raster: rasterized ${pdfBytes.length}-byte PDF to ${jpeg.length}-byte JPEG`);
   await printRawToSpooler(jpeg, printer);
 }
@@ -1100,9 +1100,14 @@ async function dispatchPrint(req: PrintRequest, copies: number): Promise<void> {
         // only covers the first page; a multi-page document at a custom size
         // isn't supported yet) and crop-fill it onto the requested size.
         if (req.pageSize && req.pageSize.width > 0 && req.pageSize.height > 0) {
-          logger.info("print: PDF with an explicit custom pageSize — rasterizing page 1 for the custom-size image path");
-          const jpeg = await rasterizePdfFirstPageToJpeg(Buffer.from(req.data, "base64"));
-          return printImage(jpeg, req, req.printer, copies);
+          // PNG, not JPEG — this image then goes through printImageViaSumatraClassic,
+          // which already preserves PNG losslessly (see rotateImage180's doc
+          // comment); a PDF that's a flat-color/text poster would otherwise
+          // pick up the same JPEG blocking that was fixed for direct PNG
+          // uploads, just one step removed.
+          logger.info("print: PDF with an explicit custom pageSize — rasterizing page 1 (PNG) for the custom-size image path");
+          const png = await rasterizePdfFirstPage(Buffer.from(req.data, "base64"), "png");
+          return printImage(png, req, req.printer, copies);
         }
       }
       return printPdfBase64(req.data, req, req.printer, copies);
