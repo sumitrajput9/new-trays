@@ -69,6 +69,13 @@ export default function DemoPage() {
   const [previewVerdictText, setPreviewVerdictText] = useState("Choose a file to preview.");
   const [previewVerdictGood, setPreviewVerdictGood] = useState<boolean | null>(null);
   const [previewNoteText, setPreviewNoteText] = useState("");
+  // Catches a low-resolution upload before it ever reaches the printer —
+  // an image with too few pixels for the target size prints pixelated/soft
+  // no matter what the software does (source quality, not a bug), but
+  // nobody could tell beforehand without this. Computed against the crop
+  // actually being used (post-zoom), since zooming in reduces the
+  // effective pixels-per-inch further.
+  const [lowResWarning, setLowResWarning] = useState<string>("");
   const pdfPreviewDocRef = useRef<any>(null);
   const previewImgRef = useRef<{ url: string; w: number; h: number } | null>(null);
   const previewImgElRef = useRef<HTMLImageElement | null>(null);
@@ -345,6 +352,7 @@ export default function DemoPage() {
       setPreviewVerdictText("Choose a file to preview.");
       setPreviewVerdictGood(null);
       setPreviewNoteText("");
+      setLowResWarning("");
       paperBox.style.width = paperBox.style.height = MAX + "px";
       return;
     }
@@ -358,6 +366,7 @@ export default function DemoPage() {
     paperBox.style.height = boxH + "px";
 
     const isImage = pdfFile.type.startsWith("image/");
+    if (!isImage) setLowResWarning("");
 
     if (isImage || (!isImage && useCustomSize)) {
       // Crop-fill — always for an image, and for a PDF when a custom size
@@ -367,6 +376,23 @@ export default function DemoPage() {
         if (!previewImgRef.current) return;
         const { w: imgW, h: imgH } = previewImgRef.current;
         const { cropW, cropH, maxPanX, maxPanY } = computeCropFracs(imgW, imgH, paperWIn, paperHIn, cropZoom);
+
+        // Low-resolution warning — the pixels actually visible after crop/
+        // zoom, divided by the physical size they'll cover, in DPI. Below
+        // ~100 DPI a print visibly softens/pixelates; below ~150 it's
+        // noticeable up close. This can't be fixed in software — it's
+        // telling the customer to pick a higher-resolution source image.
+        const effectiveDpi = Math.min((cropW * imgW) / paperWIn, (cropH * imgH) / paperHIn);
+        if (effectiveDpi < 100) {
+          setLowResWarning(
+            `This image is low resolution for this print size — about ${Math.round(effectiveDpi)} DPI (aim for 150+). It will likely look soft or pixelated on paper. Use a higher-resolution source image, or a smaller print size.`
+          );
+        } else if (effectiveDpi < 150) {
+          setLowResWarning(`This image is below ideal resolution for this print size (~${Math.round(effectiveDpi)} DPI, aim for 150+) — detail may look slightly soft.`);
+        } else {
+          setLowResWarning("");
+        }
+
         const displayScale = boxW / (cropW * imgW);
         const imgDisplayW = imgW * displayScale;
         const imgDisplayH = imgH * displayScale;
@@ -1070,6 +1096,22 @@ export default function DemoPage() {
                   </div>
                   {previewNoteText && (
                     <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6, maxWidth: 320 }}>{previewNoteText}</div>
+                  )}
+                  {lowResWarning && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        marginTop: 8,
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        maxWidth: 320,
+                        background: "#fef3c7",
+                        color: "#92400e",
+                      }}
+                    >
+                      ⚠ {lowResWarning}
+                    </div>
                   )}
                   {pdfFile?.type.startsWith("image/") && (
                     <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "var(--text-dim)" }}>
