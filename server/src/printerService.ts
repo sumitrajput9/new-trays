@@ -540,6 +540,15 @@ function normalizedRotation(deg: number | undefined): number {
   return (((Math.round((deg ?? 0) / 90) * 90) % 360) + 360) % 360;
 }
 
+/** A manually-typed custom size has no guarantee the physical paper
+ *  actually matches it — confirmed as a real bug (A4 content cut off when
+ *  a custom size was padded past plain A4's real dimensions). 96%
+ *  specifically clears that exact case (11.69/12.18 = 95.98%) with a small
+ *  margin, without being aggressive enough to visibly soften a correctly-
+ *  matched size. See printImageChromium's electronPrintOptions comment for
+ *  why this is scoped to useDriverDefaultSize only. */
+const CUSTOM_SIZE_SAFETY_SCALE_PERCENT = 96;
+
 async function printImageChromium(
   image: Buffer,
   req: PrintRequest,
@@ -617,22 +626,30 @@ async function printImageChromium(
       color: req.color !== false,
       margins: { marginType: "none" as const },
       ...(req.duplex ? { duplexMode: req.duplex } : {}),
-      // This function is never called for the custom-size driver-default
-      // flow (`useDriverDefaultSize`) — see printImage() below, which routes
-      // that case through the classic SumatraPDF engine instead, since
-      // Electron's own page-size handling turned out to have a real bug for
-      // that specific driver/custom-size combination (three different
-      // compensation attempts here each failed in a different way; Adobe
-      // and SumatraPDF, which both go through the standard Windows print
-      // path instead of Chromium's own, get it right without any of this).
-      // For every other (non-custom-size) job, both options below are
-      // required explicitly — `landscape` being left out previously made
-      // Electron fall back to whatever orientation was left over from a
-      // previous job, and `pageSize` being left out made it fall back to
-      // the printer's current default size, not the one actually requested.
+      // `landscape` being left out previously made Electron fall back to
+      // whatever orientation was left over from a previous job, and
+      // `pageSize` being left out made it fall back to the printer's
+      // current default size, not the one actually requested — both are
+      // required explicitly.
       landscape: w > h,
       // Chromium takes the page size portrait-oriented and applies `landscape` on top.
       pageSize: { width: Math.min(w, h), height: Math.max(w, h) },
+      // Safety shrink — ONLY for "type your own size" (useDriverDefaultSize),
+      // never for a named/driver-reported size (live dropdown sizes, e.g.
+      // "5x7in E2E") or a fixed size (Letter/A4 picked normally). Confirmed
+      // as a real, reproducible bug: a manually-typed custom size (set to
+      // "nominal + driver margin", e.g. A4 8.27x11.69 padded to 8.84x12.18)
+      // physically cut off content when the real paper loaded was plain
+      // A4 — because a manually-typed custom size has no guarantee the
+      // physical paper actually matches it (unlike a driver-reported named
+      // size, which the printer itself vouches for), and Electron's print
+      // API has no "shrink to fit the real printable area" of its own
+      // (unlike Adobe/Ctrl+P's own print dialogs, which do this
+      // automatically — confirmed by the same file printing correctly
+      // through them on the same physical paper). Scoped to only this one
+      // path specifically so it can never reintroduce a margin on the
+      // named/fixed sizes that are already confirmed correct without it.
+      ...(req.useDriverDefaultSize ? { scaleFactor: CUSTOM_SIZE_SAFETY_SCALE_PERCENT } : {}),
     };
     // Exactly what gets handed to Electron/the Windows driver — the single
     // most useful line for checking "what did PrintTrays actually ask the
