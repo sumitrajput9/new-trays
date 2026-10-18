@@ -577,18 +577,29 @@ async function printImageChromium(
     const debugDir = path.join(os.homedir(), "AppData", "Roaming", "PrintTrays", "debug-prints");
     fs.mkdirSync(debugDir, { recursive: true });
     const stampNow = Date.now();
+    // "contain" here, matching buildImageHtml's object-fit:contain below —
+    // this debug/coverage pair must mirror the real print's fit algorithm
+    // or it's showing a different result than what actually gets printed.
+    // With contain, some black IS expected whenever the image's own aspect
+    // ratio doesn't exactly match the page's — that's normal, not a defect
+    // (see printImage()'s dispatch comment on the cover-vs-contain
+    // trade-off). For a correctly-sized image against a driver E2E preset
+    // specifically, that "gap" lands inside the printer's own non-printable
+    // margin and won't show on paper — but this coverage-check can't know
+    // that; it only shows the PDF-level gap, which is why a full real-print
+    // test still matters even when this shows some black.
     const normalized = await normalizeToEmbeddableFormat(image, kind);
-    const debugPdf = await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn);
+    const debugPdf = await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn, 1, 0, 0, undefined, false, "contain");
     if (debugPdf) {
       const debugPath = path.join(debugDir, `printtrays-debug-${stampNow}-chromium.pdf`);
       fs.writeFileSync(debugPath, debugPdf);
       logger.info(`image print (chromium): debug copy saved to ${debugPath}`);
     }
-    const diagPdf = await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn, 1, 0, 0, { r: 0, g: 0, b: 0 });
+    const diagPdf = await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn, 1, 0, 0, { r: 0, g: 0, b: 0 }, false, "contain");
     if (diagPdf) {
       const diagPath = path.join(debugDir, `printtrays-debug-${stampNow}-chromium-coverage-check.pdf`);
       fs.writeFileSync(diagPath, diagPdf);
-      logger.info(`image print (chromium): coverage check saved to ${diagPath} — any black visible around the photo means a real uncovered gap at this exact size`);
+      logger.info(`image print (chromium): coverage check saved to ${diagPath} — this now uses contain fit (matches the real print); black visible means a PDF-level gap, which may still be fine if it falls inside the printer's non-printable margin for an E2E preset size`);
     }
   } catch (err) {
     logger.warn(`image print (chromium): couldn't save debug/coverage files: ${(err as Error).message}`);

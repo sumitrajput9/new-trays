@@ -87,7 +87,8 @@ export async function imageToPdfBytes(
   bleedWIn = 0,
   bleedHIn = 0,
   diagBackground?: { r: number; g: number; b: number },
-  independentAxisScale = false
+  independentAxisScale = false,
+  fit: "cover" | "contain" = "cover"
 ): Promise<Buffer | null> {
   if (kind.mime !== "image/jpeg" && kind.mime !== "image/png") return null;
   const doc = await PDFDocument.create();
@@ -96,7 +97,8 @@ export async function imageToPdfBytes(
   const H = hIn * 72;
   const targetW = (wIn + bleedWIn) * 72;
   const targetH = (hIn + bleedHIn) * 72;
-  const sUniform = Math.max(targetW / emb.width, targetH / emb.height) * overscan;
+  const pickScale = fit === "contain" ? Math.min : Math.max;
+  const sUniform = pickScale(targetW / emb.width, targetH / emb.height) * overscan;
   const sx = independentAxisScale ? (targetW / emb.width) * overscan : sUniform;
   const sy = independentAxisScale ? (targetH / emb.height) * overscan : sUniform;
   const dw = emb.width * sx;
