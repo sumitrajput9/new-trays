@@ -577,13 +577,14 @@ async function printImageChromium(
     const debugDir = path.join(os.homedir(), "AppData", "Roaming", "PrintTrays", "debug-prints");
     fs.mkdirSync(debugDir, { recursive: true });
     const stampNow = Date.now();
-    const debugPdf = await imageToPdfBytes(image, kind, wIn, hIn);
+    const normalized = await normalizeToEmbeddableFormat(image, kind);
+    const debugPdf = await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn);
     if (debugPdf) {
       const debugPath = path.join(debugDir, `printtrays-debug-${stampNow}-chromium.pdf`);
       fs.writeFileSync(debugPath, debugPdf);
       logger.info(`image print (chromium): debug copy saved to ${debugPath}`);
     }
-    const diagPdf = await imageToPdfBytes(image, kind, wIn, hIn, 1, 0, 0, { r: 0, g: 0, b: 0 });
+    const diagPdf = await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn, 1, 0, 0, { r: 0, g: 0, b: 0 });
     if (diagPdf) {
       const diagPath = path.join(debugDir, `printtrays-debug-${stampNow}-chromium-coverage-check.pdf`);
       fs.writeFileSync(diagPath, diagPdf);
@@ -654,9 +655,28 @@ async function printImageViaPdf(
 ): Promise<void> {
   const { w, h } = await resolvePageMicrons(req, printer, fallbackPt);
   const kind = sniffImage(image);
-  const pdf = kind ? await imageToPdfBytes(image, kind, w / MICRONS_PER_INCH, h / MICRONS_PER_INCH) : null;
-  if (!pdf) throw new Error("The classic print engine only supports JPEG and PNG images");
+  const normalized = kind ? await normalizeToEmbeddableFormat(image, kind) : null;
+  const pdf = normalized ? await imageToPdfBytes(normalized.image, normalized.kind, w / MICRONS_PER_INCH, h / MICRONS_PER_INCH) : null;
+  if (!pdf) throw new Error("The classic print engine only supports JPEG, PNG, GIF and WEBP images");
   await printPdfBase64(pdf.toString("base64"), req, printer, copies);
+}
+
+/** `imageToPdfBytes` only embeds JPEG/PNG (pdf-lib's own limitation — no
+ *  native GIF/WEBP embedding). sniffImage also recognizes GIF and WEBP, so
+ *  without this, those two formats silently fail PDF-based printing
+ *  (printImageViaPdf, the Chromium path's debug/coverage files) with "only
+ *  supports JPEG and PNG" even though the upload itself was a real,
+ *  supported image type. Converts anything that isn't already JPEG/PNG to
+ *  JPEG via canvas decode+re-encode — same mechanism rotateImage180 already
+ *  uses for its own non-PNG fallback, just without the 180° flip. */
+async function normalizeToEmbeddableFormat(image: Buffer, kind: ImageKind): Promise<{ image: Buffer; kind: ImageKind }> {
+  if (kind.mime === "image/jpeg" || kind.mime === "image/png") return { image, kind };
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const img = await loadImage(image);
+  const canvas = createCanvas(img.width, img.height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  return { image: canvas.toBuffer("image/jpeg", 0.95), kind: { mime: "image/jpeg", ext: "jpg" } };
 }
 
 /** Flips an image's pixels 180 degrees (no dimension swap, unlike a 90°
