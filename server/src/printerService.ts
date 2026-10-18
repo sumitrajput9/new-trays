@@ -13,6 +13,44 @@ import { PDFDocument } from "pdf-lib";
 import { applyQzCompat } from "./qzCompat";
 import { sniffImage, buildImageHtml, imageToPdfBytes, extractSingleImageFromPdf, ImageKind } from "./imagePrint";
 
+// The bundled pdf-to-printer package ships SumatraPDF with session-restore
+// settings turned on (RestoreSession / RememberOpenedFiles /
+// RememberStatePerDocument = true) — reasonable defaults for an interactive
+// PDF viewer, dangerous for an automated, silent print tool: every print
+// job here shells out to this same SumatraPDF binary completely headlessly,
+// and there is no flag passed to suppress session restore. Root-caused a
+// real-hardware bug this way — a physical print showed a completely
+// unrelated old PDF blended into a new job, confirmed (via a side-by-side
+// coverage-check comparison) to NOT originate from anything PrintTrays
+// itself generated, and confirmed to NOT reproduce through Ctrl+P/Adobe
+// (which don't use this SumatraPDF at all) — pointing squarely at
+// SumatraPDF restoring a stale session during our own automated calls.
+// npm reinstalls this settings file fresh on every `npm install`, so this
+// patches it at startup rather than once by hand, so a future reinstall
+// can't silently regress it back to the unsafe defaults.
+function ensureSumatraPdfSettingsAreSafe(): void {
+  try {
+    const pkgJsonPath = require.resolve("pdf-to-printer/package.json");
+    const unpacked = pkgJsonPath.includes("app.asar") && !pkgJsonPath.includes("app.asar.unpacked")
+      ? pkgJsonPath.replace("app.asar", "app.asar.unpacked")
+      : pkgJsonPath;
+    const settingsPath = path.join(path.dirname(unpacked), "dist", "SumatraPDF-settings.txt");
+    if (!fs.existsSync(settingsPath)) return;
+    const original = fs.readFileSync(settingsPath, "utf8");
+    const patched = original
+      .replace(/RememberOpenedFiles\s*=\s*true/i, "RememberOpenedFiles = false")
+      .replace(/RememberStatePerDocument\s*=\s*true/i, "RememberStatePerDocument = false")
+      .replace(/RestoreSession\s*=\s*true/i, "RestoreSession = false");
+    if (patched !== original) {
+      fs.writeFileSync(settingsPath, patched, "utf8");
+      logger.info("startup: patched bundled SumatraPDF settings to disable session restore (prevents a stale document bleeding into a new print job)");
+    }
+  } catch (err) {
+    logger.warn(`startup: couldn't verify/patch SumatraPDF settings: ${(err as Error).message}`);
+  }
+}
+ensureSumatraPdfSettingsAreSafe();
+
 function execAsync(cmd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
