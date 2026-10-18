@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Nav from "../components/Nav";
 import Footer from "../components/Footer";
@@ -78,23 +78,11 @@ export default function DemoPage() {
   const [lowResWarning, setLowResWarning] = useState<string>("");
   const pdfPreviewDocRef = useRef<any>(null);
   const previewImgRef = useRef<{ url: string; w: number; h: number } | null>(null);
-  const previewImgElRef = useRef<HTMLImageElement | null>(null);
   const paperBoxRef = useRef<HTMLDivElement>(null);
   const paperInnerRef = useRef<HTMLDivElement>(null);
   const [useCustomSize, setUseCustomSize] = useState(false);
   const [customWidthIn, setCustomWidthIn] = useState(11);
   const [customHeightIn, setCustomHeightIn] = useState(17);
-
-  // Interactive crop for image uploads: zoom (1 = the minimum needed to
-  // cover the box, same as the old fixed cover-fit) and pan (0..1 on each
-  // axis, 0.5 = centered) expressed as FRACTIONS of the image's own native
-  // size — deliberately resolution-independent, so the exact same numbers
-  // drive both the small on-screen preview and the full-resolution export,
-  // with no re-derivation or drift between the two.
-  const [cropZoom, setCropZoom] = useState(1);
-  const [cropPanX, setCropPanX] = useState(0.5);
-  const [cropPanY, setCropPanY] = useState(0.5);
-  const dragStateRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
   const appendLog = (line: string) => setLog((l) => [`${new Date().toLocaleTimeString()}  ${line}`, ...l]);
 
@@ -290,36 +278,6 @@ export default function DemoPage() {
     return STATIC_SIZE_INCHES[paperSize] ?? [8.5, 11];
   }
 
-  // The crop window, as fractions of the source image's own native width/
-  // height — e.g. cropW=1 means "the full image width is visible". At
-  // zoom=1 this exactly reproduces the old fixed cover-fit (one axis fully
-  // visible, the other cropped just enough to match the paper's ratio);
-  // zooming in shrinks the window further, revealing less of the image per
-  // axis. panX/panY (0..1) then slide that window across whatever slack is
-  // left once the window is smaller than the full image on that axis.
-  function computeCropFracs(imgW: number, imgH: number, paperWIn: number, paperHIn: number, zoom: number) {
-    const targetRatio = paperWIn / paperHIn;
-    const imgRatio = imgW / imgH;
-    const visW = imgRatio > targetRatio ? targetRatio / imgRatio : 1;
-    const visH = imgRatio > targetRatio ? 1 : imgRatio / targetRatio;
-    const cropW = Math.min(1, visW / zoom);
-    const cropH = Math.min(1, visH / zoom);
-    const maxPanX = 1 - cropW;
-    const maxPanY = 1 - cropH;
-    return { cropW, cropH, maxPanX, maxPanY };
-  }
-
-  // Source-pixel crop rectangle for the current crop state — the single
-  // source of truth used by both the preview (scaled down for display) and
-  // the real print export (drawn at full native resolution), so what's
-  // shown on screen is exactly what gets sent.
-  function getCropRectPx(imgW: number, imgH: number, paperWIn: number, paperHIn: number) {
-    const { cropW, cropH, maxPanX, maxPanY } = computeCropFracs(imgW, imgH, paperWIn, paperHIn, cropZoom);
-    const x0 = cropPanX * maxPanX;
-    const y0 = cropPanY * maxPanY;
-    return { sx: x0 * imgW, sy: y0 * imgH, sw: cropW * imgW, sh: cropH * imgH };
-  }
-
   // Loads pdf.js once, on demand — not in the root layout, since only this
   // page needs it.
   useEffect(() => {
@@ -375,14 +333,23 @@ export default function DemoPage() {
       if (isImage) {
         if (!previewImgRef.current) return;
         const { w: imgW, h: imgH } = previewImgRef.current;
-        const { cropW, cropH, maxPanX, maxPanY } = computeCropFracs(imgW, imgH, paperWIn, paperHIn, cropZoom);
 
-        // Low-resolution warning — the pixels actually visible after crop/
-        // zoom, divided by the physical size they'll cover, in DPI. Below
-        // ~100 DPI a print visibly softens/pixelates; below ~150 it's
-        // noticeable up close. This can't be fixed in software — it's
-        // telling the customer to pick a higher-resolution source image.
-        const effectiveDpi = Math.min((cropW * imgW) / paperWIn, (cropH * imgH) / paperHIn);
+        // Contain fit (matches the bridge's real print exactly — see
+        // buildImageHtml/printImageChromium server-side): the whole image
+        // is always shown, scaled down just enough to fit inside the page,
+        // never cropped. No drag/zoom anymore — there's nothing left for
+        // the customer to frame, since nothing gets cut off regardless of
+        // where it sits.
+        const containScale = Math.min(boxW / imgW, boxH / imgH);
+        const imgDisplayW = imgW * containScale;
+        const imgDisplayH = imgH * containScale;
+
+        // Low-resolution warning — the full image's native pixels divided
+        // by the physical size it'll actually print at, in DPI. Below ~100
+        // DPI a print visibly softens/pixelates; below ~150 it's noticeable
+        // up close. This can't be fixed in software — it's telling the
+        // customer to pick a higher-resolution source image.
+        const effectiveDpi = Math.max(imgW / paperWIn, imgH / paperHIn);
         if (effectiveDpi < 100) {
           setLowResWarning(
             `This image is low resolution for this print size — about ${Math.round(effectiveDpi)} DPI (aim for 150+). It will likely look soft or pixelated on paper. Use a higher-resolution source image, or a smaller print size.`
@@ -393,50 +360,70 @@ export default function DemoPage() {
           setLowResWarning("");
         }
 
-        const displayScale = boxW / (cropW * imgW);
-        const imgDisplayW = imgW * displayScale;
-        const imgDisplayH = imgH * displayScale;
-        const imgLeft = -(cropPanX * maxPanX) * imgDisplayW;
-        const imgTop = -(cropPanY * maxPanY) * imgDisplayH;
         const img = document.createElement("img");
         img.src = previewImgRef.current.url;
         img.draggable = false;
         img.style.position = "absolute";
-        img.style.left = imgLeft + "px";
-        img.style.top = imgTop + "px";
+        img.style.left = (boxW - imgDisplayW) / 2 + "px";
+        img.style.top = (boxH - imgDisplayH) / 2 + "px";
         img.style.width = imgDisplayW + "px";
         img.style.height = imgDisplayH + "px";
         img.style.maxWidth = "none";
-        img.style.cursor = "grab";
         paperInner.appendChild(img);
+
+        const gapX = boxW - imgDisplayW;
+        const gapY = boxH - imgDisplayH;
+        if (Math.abs(gapX) <= 1 && Math.abs(gapY) <= 1) {
+          setPreviewVerdictText("Fills the page exactly — no gap, nothing cropped.");
+          setPreviewVerdictGood(true);
+        } else {
+          const msgs: string[] = [];
+          if (gapX > 1) msgs.push(`${fmtGapIn(gapX, pxPerIn)} gap left/right`);
+          if (gapY > 1) msgs.push(`${fmtGapIn(gapY, pxPerIn)} gap top/bottom`);
+          setPreviewVerdictText(`Full image, nothing cropped — ${msgs.join(" and ")}.`);
+          setPreviewVerdictGood(null);
+        }
+        setPreviewNoteText(
+          "The entire image always prints — nothing is ever cropped. A gap shown here appears on paper too, unless this is an E2E preset sized exactly as the driver's margin + your image's own size, where it falls inside the printer's non-printable edge instead."
+        );
+        return;
       } else if (pdfPreviewDocRef.current) {
         const page = await pdfPreviewDocRef.current.getPage(1);
         const vp0 = page.getViewport({ scale: 1 });
-        const renderScale = Math.max(boxW / vp0.width, boxH / vp0.height) * 2;
+        const renderScale = Math.min(boxW / vp0.width, boxH / vp0.height) * 2;
         const vp = page.getViewport({ scale: renderScale });
         const canvas = document.createElement("canvas");
         canvas.width = vp.width;
         canvas.height = vp.height;
         await page.render({ canvasContext: canvas.getContext("2d")!, viewport: vp }).promise;
-        const coverScale = Math.max(boxW / vp0.width, boxH / vp0.height);
-        const dispW = vp0.width * coverScale;
-        const dispH = vp0.height * coverScale;
+        // Contain, not cover — this PDF gets rasterized server-side then
+        // sent through the same contain-fit Chromium path as an image (see
+        // printImage()'s dispatch), so page 1 is shown in full here too.
+        const containScale = Math.min(boxW / vp0.width, boxH / vp0.height);
+        const dispW = vp0.width * containScale;
+        const dispH = vp0.height * containScale;
         canvas.style.position = "absolute";
         canvas.style.left = (boxW - dispW) / 2 + "px";
         canvas.style.top = (boxH - dispH) / 2 + "px";
         canvas.style.width = dispW + "px";
         canvas.style.height = dispH + "px";
         paperInner.appendChild(canvas);
+        const gapX = boxW - dispW;
+        const gapY = boxH - dispH;
+        if (Math.abs(gapX) <= 1 && Math.abs(gapY) <= 1) {
+          setPreviewVerdictText("Fills the page exactly — no gap, nothing cropped.");
+          setPreviewVerdictGood(true);
+        } else {
+          const msgs: string[] = [];
+          if (gapX > 1) msgs.push(`${fmtGapIn(gapX, pxPerIn)} gap left/right`);
+          if (gapY > 1) msgs.push(`${fmtGapIn(gapY, pxPerIn)} gap top/bottom`);
+          setPreviewVerdictText(`Full page, nothing cropped — ${msgs.join(" and ")}.`);
+          setPreviewVerdictGood(null);
+        }
+        setPreviewNoteText("Custom size on this PDF: page 1 is rasterized, then shown in full — nothing is ever cropped.");
       } else {
         return;
       }
-      setPreviewVerdictText("Borderless — fills the page completely (cropped to fit).");
-      setPreviewVerdictGood(true);
-      setPreviewNoteText(
-        isImage
-          ? "Drag the photo to reposition it, zoom to crop in tighter — the exact crop you frame here is what gets printed, not an approximation. Scale mode has no effect on image uploads — only PDFs at a normal (non-custom) size."
-          : "Custom size on this PDF: page 1 is rasterized and crop-filled, same as a photo."
-      );
       return;
     }
 
@@ -508,7 +495,6 @@ export default function DemoPage() {
         URL.revokeObjectURL(previewImgRef.current.url);
         previewImgRef.current = null;
       }
-      previewImgElRef.current = null;
       pdfPreviewDocRef.current = null;
       if (pdfFile) {
         if (pdfFile.type.startsWith("image/")) {
@@ -521,10 +507,6 @@ export default function DemoPage() {
           }).catch(() => undefined);
           if (cancelled) return;
           previewImgRef.current = { url, w: img.naturalWidth, h: img.naturalHeight };
-          previewImgElRef.current = img;
-          setCropZoom(1);
-          setCropPanX(0.5);
-          setCropPanY(0.5);
         } else if (pdfFile.type === "application/pdf" && (window as any).pdfjsLib) {
           try {
             const buf = await pdfFile.arrayBuffer();
@@ -543,93 +525,31 @@ export default function DemoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfFile, pdfjsReady]);
 
-  // The target paper shape just changed — snap the crop back to centered,
-  // un-zoomed. Otherwise a crop dialed in for one ratio silently carries
-  // over (still valid, just confusingly framed) onto a differently-shaped
-  // page.
-  useEffect(() => {
-    setCropZoom(1);
-    setCropPanX(0.5);
-    setCropPanY(0.5);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paperSize, useCustomSize, customWidthIn, customHeightIn, landscape]);
-
   // Re-render whenever a setting that affects the preview changes.
   useEffect(() => {
     renderPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paperSize, useCustomSize, customWidthIn, customHeightIn, scaleMode, scalePercent, landscape, printerDetails, cropZoom, cropPanX, cropPanY]);
-
-  function handleCropPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
-    if (!pdfFile?.type.startsWith("image/")) return;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    dragStateRef.current = { startX: e.clientX, startY: e.clientY, startPanX: cropPanX, startPanY: cropPanY };
-  }
-
-  function handleCropPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
-    const drag = dragStateRef.current;
-    const paperBox = paperBoxRef.current;
-    if (!drag || !paperBox || !previewImgRef.current) return;
-    let [paperWIn, paperHIn] = getSelectedPaperInches();
-    if (landscape) [paperWIn, paperHIn] = [paperHIn, paperWIn];
-    const { w: imgW, h: imgH } = previewImgRef.current;
-    const { cropW, maxPanX, maxPanY } = computeCropFracs(imgW, imgH, paperWIn, paperHIn, cropZoom);
-    const boxW = paperBox.clientWidth;
-    const displayScale = boxW / (cropW * imgW);
-    const dxFrac = maxPanX > 0 ? (e.clientX - drag.startX) / (displayScale * imgW * maxPanX) : 0;
-    const dyFrac = maxPanY > 0 ? (e.clientY - drag.startY) / (displayScale * imgH * maxPanY) : 0;
-    setCropPanX(Math.min(1, Math.max(0, drag.startPanX - dxFrac)));
-    setCropPanY(Math.min(1, Math.max(0, drag.startPanY - dyFrac)));
-  }
-
-  function handleCropPointerUp() {
-    dragStateRef.current = null;
-  }
-
-  // Renders the current crop (full resolution, native pixels — no
-  // resampling beyond what the crop itself requires) to a blob in the
-  // original format, so a PNG design stays lossless end to end and a
-  // flat-color/text graphic never picks up JPEG blocking. This is what
-  // actually gets sent for an image upload, not the raw file — by the time
-  // it reaches the bridge its aspect ratio already equals the paper's, so
-  // the server's own cover-fit crop becomes a no-op.
-  async function buildCroppedImageBlob(paperWIn: number, paperHIn: number): Promise<Blob | null> {
-    const imgEl = previewImgElRef.current;
-    if (!imgEl || !pdfFile) return null;
-    const { sx, sy, sw, sh } = getCropRectPx(imgEl.naturalWidth, imgEl.naturalHeight, paperWIn, paperHIn);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(sw);
-    canvas.height = Math.round(sh);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    const isPng = pdfFile.type === "image/png";
-    return new Promise((resolve) => canvas.toBlob((b) => resolve(b), isPng ? "image/png" : "image/jpeg", 0.95));
-  }
+  }, [paperSize, useCustomSize, customWidthIn, customHeightIn, scaleMode, scalePercent, landscape, printerDetails]);
 
   async function handlePrintPdf() {
     if (!ppRef || !selected || !pdfFile) return;
     setPdfPrinting(true);
     appendLog(`Reading "${pdfFile.name}" (${(pdfFile.size / 1024).toFixed(0)} KB)...`);
     try {
-      // An uploaded photo is cropped client-side, right here, to exactly the
-      // paper's own aspect ratio — using the same crop the user just framed
-      // in the preview above — before it's ever sent. The bridge still does
-      // its own cover-fit crop server-side as a safety net, but since the
-      // ratios now already match, that becomes a no-op: what's framed above
-      // is what prints, not an approximation of it. (Only PDFs need the
-      // classic PDF route, untouched here.)
+      // REVERTED the client-side pre-crop: the bridge now uses contain-fit
+      // server-side (matching qrinto.com's production print agent, which
+      // never crops — see printImageChromium's dispatch comment) — it shows
+      // the entire image, never cutting anything off, accepting a small gap
+      // on one axis if the image's own aspect ratio doesn't already match
+      // the page's. Pre-cropping here to force a ratio match would silently
+      // defeat that: the crop would already have happened before the
+      // bridge ever saw the file, making its contain-fit a no-op and
+      // reintroducing exactly the "cropped content" problem contain-fit was
+      // adopted to eliminate. Sending the original file lets the bridge's
+      // contain-fit be the only thing that ever touches framing.
       const isImage = pdfFile.type.startsWith("image/");
       const [wIn, hIn] = getSelectedPaperInches();
-      let base64: string;
-      if (isImage) {
-        let [cropWIn, cropHIn] = [wIn, hIn];
-        if (landscape) [cropWIn, cropHIn] = [cropHIn, cropWIn];
-        const croppedBlob = await buildCroppedImageBlob(cropWIn, cropHIn);
-        base64 = croppedBlob ? await readFileAsBase64(croppedBlob) : await readFileAsBase64(pdfFile);
-      } else {
-        base64 = await readFileAsBase64(pdfFile);
-      }
+      const base64 = await readFileAsBase64(pdfFile);
       appendLog(
         `Sending "${pdfFile.name}" to "${selected}" (${useCustomSize ? "custom size" : paperSize}, ${wIn.toFixed(2)} × ${hIn.toFixed(2)} in${
           landscape ? ", landscape" : ""
@@ -1027,10 +947,11 @@ export default function DemoPage() {
               <p style={{ marginBottom: 14 }}>
                 Test a real file end-to-end (uses the same printer and page-setup options above). Useful for
                 catching issues that a plain HTML test page won't — e.g. blank pages on image-heavy PDFs. An
-                image file (JPEG/PNG/WEBP) is sent as-is; PrintTrays crops it to fill the selected paper size
-                exactly, edge-to-edge, and prints it the same way Ctrl+P would (much less data for the driver,
-                so much faster on photo printers) — pick an "E2E" paper size above first for a true borderless
-                test. A PDF that is only one full-page photo is treated the same way.
+                image file (JPEG/PNG/WEBP) is sent as-is; PrintTrays shows the whole image on the selected paper
+                size — never cropped — scaled down just enough to fit, which leaves a small gap on one axis if
+                the image's own aspect ratio doesn't already match the paper's, and prints it the same way
+                Ctrl+P would (much less data for the driver, so much faster on photo printers). A PDF that is
+                only one full-page photo is treated the same way.
               </p>
               {useCustomSize && (
                 <p style={{ marginBottom: 14, fontSize: 12, color: "var(--text-dim)" }}>
@@ -1057,10 +978,6 @@ export default function DemoPage() {
               <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 16 }}>
                 <div
                   ref={paperBoxRef}
-                  onPointerDown={handleCropPointerDown}
-                  onPointerMove={handleCropPointerMove}
-                  onPointerUp={handleCropPointerUp}
-                  onPointerCancel={handleCropPointerUp}
                   style={{
                     position: "relative",
                     overflow: "hidden",
@@ -1072,7 +989,6 @@ export default function DemoPage() {
                     maxWidth: 220,
                     maxHeight: 220,
                     flexShrink: 0,
-                    touchAction: "none",
                   }}
                 >
                   <div ref={paperInnerRef} />
@@ -1112,21 +1028,6 @@ export default function DemoPage() {
                     >
                       ⚠ {lowResWarning}
                     </div>
-                  )}
-                  {pdfFile?.type.startsWith("image/") && (
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "var(--text-dim)" }}>
-                      Zoom
-                      <input
-                        type="range"
-                        min={1}
-                        max={3}
-                        step={0.01}
-                        value={cropZoom}
-                        onChange={(e) => setCropZoom(parseFloat(e.target.value))}
-                        style={{ width: 140 }}
-                      />
-                      <span style={{ minWidth: 34 }}>{Math.round(cropZoom * 100)}%</span>
-                    </label>
                   )}
                 </div>
               </div>
