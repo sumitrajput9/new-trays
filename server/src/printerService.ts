@@ -564,6 +564,35 @@ async function printImageChromium(
     `image print (chromium): ${image.length} bytes ${kind.mime} -> ${(w / MICRONS_PER_INCH).toFixed(2)}x${(h / MICRONS_PER_INCH).toFixed(2)}in rotation=${rotation} factor=${factor}`
   );
 
+  // Same local verification the custom-size path already has — a debug PDF
+  // showing exactly what the cover-fit crop looks like at this page size,
+  // plus a black-background coverage-check copy, saved without touching
+  // anything about the actual print call below. This path (fixed/named
+  // sizes via Chromium) never had either file before; added purely for
+  // visibility, at the user's explicit request to leave this path's print
+  // behavior itself unchanged.
+  try {
+    const wIn = w / MICRONS_PER_INCH;
+    const hIn = h / MICRONS_PER_INCH;
+    const debugDir = path.join(os.homedir(), "AppData", "Roaming", "PrintTrays", "debug-prints");
+    fs.mkdirSync(debugDir, { recursive: true });
+    const stampNow = Date.now();
+    const debugPdf = await imageToPdfBytes(image, kind, wIn, hIn);
+    if (debugPdf) {
+      const debugPath = path.join(debugDir, `printtrays-debug-${stampNow}-chromium.pdf`);
+      fs.writeFileSync(debugPath, debugPdf);
+      logger.info(`image print (chromium): debug copy saved to ${debugPath}`);
+    }
+    const diagPdf = await imageToPdfBytes(image, kind, wIn, hIn, 1, 0, 0, { r: 0, g: 0, b: 0 });
+    if (diagPdf) {
+      const diagPath = path.join(debugDir, `printtrays-debug-${stampNow}-chromium-coverage-check.pdf`);
+      fs.writeFileSync(diagPath, diagPdf);
+      logger.info(`image print (chromium): coverage check saved to ${diagPath} — any black visible around the photo means a real uncovered gap at this exact size`);
+    }
+  } catch (err) {
+    logger.warn(`image print (chromium): couldn't save debug/coverage files: ${(err as Error).message}`);
+  }
+
   const win = new BrowserWindow({ show: false });
   try {
     await win.loadFile(htmlPath);
