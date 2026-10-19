@@ -703,6 +703,59 @@ async function normalizeToEmbeddableFormat(image: Buffer, kind: ImageKind): Prom
   return { image: canvas.toBuffer("image/jpeg", 0.95), kind: { mime: "image/jpeg", ext: "jpg" } };
 }
 
+/** Non-destructive padding, server-side equivalent of the frontend's
+ *  buildPaddedImageBlob (website/app/demo/page.tsx) — stretches a 1px
+ *  slice of the image's own edge pixels into the gap instead of a solid
+ *  color border, so contain-fit shows no crop AND no visible gap. Needed
+ *  here because a raw PDF upload never goes through the frontend's
+ *  client-side padding step (that only runs for image-file uploads) — a
+ *  PDF rasterized onto a custom target page was otherwise left relying on
+ *  contain-fit's own gap whenever its own page ratio didn't exactly match
+ *  the target, which is exactly the "fill the target page" gap this closes.
+ *  No-ops (returns the input unchanged) when the ratios already match
+ *  within a tiny tolerance. */
+async function padImageToAspect(png: Buffer, targetWIn: number, targetHIn: number): Promise<Buffer> {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const img = await loadImage(png);
+  const imgW = img.width;
+  const imgH = img.height;
+  const targetRatio = targetWIn / targetHIn;
+  const imgRatio = imgW / imgH;
+  if (Math.abs(imgRatio - targetRatio) < 0.001) {
+    logger.info(`padImageToAspect: ${imgW}x${imgH} already matches target ratio ${targetRatio.toFixed(4)} — no padding needed`);
+    return png;
+  }
+
+  let padW = imgW;
+  let padH = imgH;
+  if (imgRatio > targetRatio) {
+    padH = Math.round(imgW / targetRatio);
+  } else {
+    padW = Math.round(imgH * targetRatio);
+  }
+  const offsetX = Math.round((padW - imgW) / 2);
+  const offsetY = Math.round((padH - imgH) / 2);
+
+  const canvas = createCanvas(padW, padH);
+  const ctx = canvas.getContext("2d");
+  if (offsetY > 0) {
+    ctx.drawImage(img as any, 0, 0, imgW, 1, 0, 0, padW, offsetY);
+    ctx.drawImage(img as any, 0, imgH - 1, imgW, 1, 0, offsetY + imgH, padW, padH - offsetY - imgH);
+  }
+  if (offsetX > 0) {
+    ctx.drawImage(img as any, 0, 0, 1, imgH, 0, offsetY, offsetX, imgH);
+    ctx.drawImage(img as any, imgW - 1, 0, 1, imgH, offsetX + imgW, offsetY, padW - offsetX - imgW, imgH);
+  }
+  ctx.drawImage(img as any, offsetX, offsetY, imgW, imgH);
+
+  logger.info(
+    `padImageToAspect: ${imgW}x${imgH} (ratio ${imgRatio.toFixed(4)}) -> padded to ${padW}x${padH} (target ratio ${targetRatio.toFixed(
+      4
+    )}) for target ${targetWIn.toFixed(2)}x${targetHIn.toFixed(2)}in, offsetX=${offsetX} offsetY=${offsetY}`
+  );
+  return canvas.toBuffer("image/png");
+}
+
 /** Flips an image's pixels 180 degrees (no dimension swap, unlike a 90°
  *  rotation). Re-encodes as PNG when the source was PNG (lossless — a
  *  design with flat colors/text/logos shows visible JPEG blocking
@@ -1187,6 +1240,20 @@ async function dispatchPrint(req: PrintRequest, copies: number): Promise<void> {
     case "image":
       return printImage(Buffer.from(req.data, "base64"), req, req.printer, copies);
     case "pdf": {
+      // Full target-page picture up front, in the server's own console —
+      // every field that decides how this job gets fit/scaled/padded, all
+      // in one line, so a "wrong result" report can be checked against
+      // exactly what PrintTrays was told to do instead of guessed at.
+      logger.info(
+        `print (pdf): job start — printer="${req.printer}" scaleMode=${req.scaleMode ?? "(default)"} paperSize=${
+          req.paperSize ?? "(none)"
+        } pageSize=${
+          req.pageSize ? `${req.pageSize.width}x${req.pageSize.height}${req.pageSize.units ?? "in"}` : "(none)"
+        } useDriverDefaultSize=${!!req.useDriverDefaultSize} paperSafetyShrink=${!!req.paperSafetyShrink} imageEngine=${
+          req.imageEngine ?? "chromium"
+        } fastRaster=${!!req.fastRaster} landscape=${!!req.landscape} color=${req.color !== false} copies=${copies}`
+      );
+
       if (req.fastRaster) return printPdfViaRasterRaw(req.data, req.printer);
 
       // A PDF that is nothing but one full-page photo (what a browser-side
@@ -1225,14 +1292,26 @@ async function dispatchPrint(req: PrintRequest, copies: number): Promise<void> {
         // only covers the first page; a multi-page document at a custom size
         // isn't supported yet) and crop-fill it onto the requested size.
         if (req.pageSize && req.pageSize.width > 0 && req.pageSize.height > 0) {
-          // PNG, not JPEG — this image then goes through printImageViaSumatraClassic,
+          // PNG, not JPEG — this image then goes through printImageChromium,
           // which already preserves PNG losslessly (see rotateImage180's doc
           // comment); a PDF that's a flat-color/text poster would otherwise
           // pick up the same JPEG blocking that was fixed for direct PNG
           // uploads, just one step removed.
           logger.info("print: PDF with an explicit custom pageSize — rasterizing page 1 (PNG) for the custom-size image path");
           const png = await rasterizePdfFirstPage(Buffer.from(req.data, "base64"), "png");
-          return printImage(png, req, req.printer, copies);
+          // A raw PDF upload never goes through the frontend's client-side
+          // padding (buildPaddedImageBlob only runs for image-file uploads)
+          // — without padding here, any mismatch between the PDF's own page
+          // ratio and the target page ratio shows up as contain-fit's own
+          // gap. resolvePageMicrons is the exact same call printImageChromium
+          // makes right after this for the real print, so padding and the
+          // eventual print always agree on the same target size.
+          const { w: targetWMicron, h: targetHMicron } = await resolvePageMicrons(req, req.printer);
+          const targetWIn = targetWMicron / MICRONS_PER_INCH;
+          const targetHIn = targetHMicron / MICRONS_PER_INCH;
+          logger.info(`print: target page = ${targetWIn.toFixed(3)} x ${targetHIn.toFixed(3)} in — padding rasterized PDF to match before print`);
+          const padded = await padImageToAspect(png, targetWIn, targetHIn);
+          return printImage(padded, req, req.printer, copies);
         }
       }
       return printPdfBase64(req.data, req, req.printer, copies);
