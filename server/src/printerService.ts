@@ -669,7 +669,18 @@ async function printImageChromium(
   }
 }
 
-/** Classic route for an image: wrap it into a PDF the size of the paper and send that through SumatraPDF. */
+/** Classic/"sumatra" engine route for an image, rebuilt clean to match
+ *  QZ Tray's own documented custom-size behavior (verified against QZ's
+ *  real source/docs): build a PDF page at EXACTLY the target size (no
+ *  bleed, no rotation hack — that was a different, driver-specific compen-
+ *  sation that belongs only to printImageViaSumatraClassic), pad the image
+ *  to the target's aspect first so contain-fit draws it with zero visible
+ *  gap, then print with SumatraPDF told to trust that exact size ("noscale"
+ *  — set by printPdfBase64 whenever useDriverDefaultSize is set, which the
+ *  custom-size UI path always sends). This mirrors QZ's own
+ *  Paper.setImageableArea(customSize) + forced SCALE_TO_FIT + noscale
+ *  approach: declare the exact size, trust it, don't let the driver's own
+ *  "fit to this named paper" guess get involved. */
 async function printImageViaPdf(
   image: Buffer,
   req: PrintRequest,
@@ -678,10 +689,20 @@ async function printImageViaPdf(
   fallbackPt?: [number, number]
 ): Promise<void> {
   const { w, h } = await resolvePageMicrons(req, printer, fallbackPt);
-  const kind = sniffImage(image);
-  const normalized = kind ? await normalizeToEmbeddableFormat(image, kind) : null;
-  const pdf = normalized ? await imageToPdfBytes(normalized.image, normalized.kind, w / MICRONS_PER_INCH, h / MICRONS_PER_INCH) : null;
+  const wIn = w / MICRONS_PER_INCH;
+  const hIn = h / MICRONS_PER_INCH;
+  const padded = await padImageToAspect(image, wIn, hIn);
+  const kind = sniffImage(padded);
+  const normalized = kind ? await normalizeToEmbeddableFormat(padded, kind) : null;
+  const pdf = normalized
+    ? await imageToPdfBytes(normalized.image, normalized.kind, wIn, hIn, 1, 0, 0, undefined, false, "contain")
+    : null;
   if (!pdf) throw new Error("The classic print engine only supports JPEG, PNG, GIF and WEBP images");
+  logger.info(
+    `image print (sumatra engine): target ${wIn.toFixed(3)}x${hIn.toFixed(3)}in — padded to match aspect, contain-fit, scale=${
+      req.scaleMode === "actual" || req.scaleMode === "custom" || req.useDriverDefaultSize ? "noscale" : "fit"
+    }`
+  );
   await printPdfBase64(pdf.toString("base64"), req, printer, copies);
 }
 
