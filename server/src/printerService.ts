@@ -735,7 +735,7 @@ async function normalizeToEmbeddableFormat(image: Buffer, kind: ImageKind): Prom
  *  the target, which is exactly the "fill the target page" gap this closes.
  *  No-ops (returns the input unchanged) when the ratios already match
  *  within a tiny tolerance. */
-async function padImageToAspect(png: Buffer, targetWIn: number, targetHIn: number): Promise<Buffer> {
+export async function padImageToAspect(png: Buffer, targetWIn: number, targetHIn: number): Promise<Buffer> {
   const { createCanvas, loadImage } = await import("@napi-rs/canvas");
   const img = await loadImage(png);
   const imgW = img.width;
@@ -951,8 +951,13 @@ async function printImageViaDevmode(image: Buffer, req: PrintRequest, printer: s
   const widthIn = w / MICRONS_PER_INCH;
   const heightIn = h / MICRONS_PER_INCH;
 
-  const tmp = path.join(os.tmpdir(), `printtrays-devmode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`);
-  fs.writeFileSync(tmp, image);
+  // Defensive, same reasoning as printImageViaPdf: don't assume the caller
+  // already padded to this exact target (direct image uploads only get
+  // padded client-side, which this server-side step isn't dependent on).
+  const padded = await padImageToAspect(image, widthIn, heightIn);
+  const ext = sniffImage(padded)?.ext ?? "png";
+  const tmp = path.join(os.tmpdir(), `printtrays-devmode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
+  fs.writeFileSync(tmp, padded);
 
   // Saves exactly the image this job sends to the driver — same purpose as
   // the debug copies elsewhere in this file: lets a "did it print wrong"
@@ -962,8 +967,8 @@ async function printImageViaDevmode(image: Buffer, req: PrintRequest, printer: s
   const debugDir = path.join(os.homedir(), "AppData", "Roaming", "PrintTrays", "debug-prints");
   try {
     fs.mkdirSync(debugDir, { recursive: true });
-    const debugPath = path.join(debugDir, `printtrays-debug-${Date.now()}.jpg`);
-    fs.writeFileSync(debugPath, image);
+    const debugPath = path.join(debugDir, `printtrays-debug-${Date.now()}-devmode.${ext}`);
+    fs.writeFileSync(debugPath, padded);
     logger.info(`print (devmode): saved copy to ${debugPath}`);
   } catch (err) {
     logger.warn(`print (devmode): failed to save debug copy: ${(err as Error).message}`);
@@ -977,11 +982,6 @@ async function printImageViaDevmode(image: Buffer, req: PrintRequest, printer: s
       heightIn,
       color: req.color !== false,
       copies,
-      // Measured directly on real hardware via .NET's PageSettings.PrintableArea
-      // for this exact custom size: printable area is inset by ~18 hundredths-
-      // inch (~0.18in) on every side. 7% leaves a small safety margin above
-      // the precisely measured ~5.6% needed.
-      overscan: 1.07,
     });
     logger.info(`print (devmode): requesting ${widthIn.toFixed(2)}x${heightIn.toFixed(2)}in, explicit PaperSize, printer="${printer}"`);
     const stdout = await new Promise<string>((resolve, reject) => {
@@ -1128,15 +1128,20 @@ try {
   $doc.PrinterSettings = $ps
   $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
 
-  $overscan = [double]$p.overscan
-
+  # No overscan/cover-fit math here any more — the image handed in is
+  # already padded (padImageToAspect, server-side) to exactly this job's
+  # target aspect ratio before this script ever sees it, so a plain
+  # fill-the-page draw is correct and can't crop. (Width- and height-based
+  # scale should already be equal to within rounding; taking the smaller
+  # of the two is just a defensive guard against a 1px rounding mismatch
+  # ever producing a 1px sliver of uncovered page edge.)
   $handler = {
     param($sender, $e)
     $pageW = $e.PageBounds.Width
     $pageH = $e.PageBounds.Height
     $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-    $scale = [Math]::Max($pageW / $img.Width, $pageH / $img.Height) * $overscan
+    $scale = [Math]::Min($pageW / $img.Width, $pageH / $img.Height)
     $dw = $img.Width * $scale
     $dh = $img.Height * $scale
     $x = ($pageW - $dw) / 2
@@ -1158,25 +1163,36 @@ async function printImage(
   copies: number,
   fallbackPt?: [number, number]
 ): Promise<void> {
-  // REVERTED (back to v1.2.0's mechanism): custom/E2E-size images used to be
-  // routed to printImageViaSumatraClassic — a whole separate code path
-  // (SumatraPDF + the driver's custom-size slot selected by name + a 180°
-  // rotation compensation + fixed-inch bleed) built up over many versions
-  // this session to fix a white-border/orientation problem that was
-  // believed to be specific to Chromium's handling of this exact custom
-  // size. v1.2.0 (confirmed still running correctly in production on
-  // qrinto.com right now, and re-verified on real hardware today) never had
-  // any of that — it just sent every image, custom size or not, through
-  // Chromium's own webContents.print() with an explicit pageSize, no
-  // special-casing at all. Given direct, current, production evidence that
-  // the plain Chromium path handles this driver's custom/E2E sizes
-  // correctly, custom-size images now go through the same Chromium path as
-  // every other image — matching v1.2.0's simpler, proven mechanism instead
-  // of carrying forward architecture built to work around a problem that
-  // may not have been Chromium's to begin with. printImageViaSumatraClassic
-  // is left in the file, unused, rather than deleted, in case real-hardware
-  // testing of this revert surfaces a case where it's still needed.
+  // v1.2.0's simpler mechanism (every image through Chromium, no
+  // special-casing) is still the right default — it's what fixed this
+  // session's crop/gap problems and was re-verified correct for that on
+  // real hardware. But a NEW, separate, real-hardware report came in for
+  // custom sizes specifically: a correctly-portrait-declared job (logged
+  // landscape=false, correct pageSize) physically printed landscape. This
+  // matches a real, independently-documented driver limitation: the
+  // Noritsu driver's own PPD states outright that orientation values are
+  // "not utilized" for custom page sizes — Chromium builds a fresh DEVMODE
+  // for every job, which this driver apparently doesn't orient the way a
+  // declared-portrait request expects. printImageViaDevmode (below) exists
+  // specifically for this: it reads the printer's CURRENT devmode via the
+  // raw Win32 DocumentProperties call (not .NET's lossy wrapper) and
+  // patches ONLY the size fields, leaving every driver-private field —
+  // including whatever "Page Rotate" is set in the driver's own Properties
+  // dialog — untouched instead of silently reset. Scoped to
+  // useDriverDefaultSize (the custom-size path, exactly where this was
+  // reported) so named/E2E dropdown sizes — unaffected, still correct —
+  // keep using the proven plain-Chromium path unchanged. NOT YET CONFIRMED
+  // on real hardware that this fixes the orientation — needs a real test
+  // print before being trusted; printImageChromium is still tried as a
+  // fallback if this throws.
   if (req.imageEngine === "sumatra") return printImageViaPdf(image, req, printer, copies, fallbackPt);
+  if (req.useDriverDefaultSize) {
+    try {
+      return await printImageViaDevmode(image, req, printer, copies, fallbackPt);
+    } catch (err) {
+      logger.warn(`image print (devmode) failed: ${(err as Error).message} — falling back to the chromium engine`);
+    }
+  }
   try {
     await printImageChromium(image, req, printer, copies, fallbackPt);
   } catch (err) {
