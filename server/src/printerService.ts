@@ -1297,8 +1297,24 @@ async function dispatchPrint(req: PrintRequest, copies: number): Promise<void> {
         const targetLooksE2E = /e2e|borderless|full[\s-]?bleed/i.test(String(req.paperSize ?? ""));
         const single = await extractSingleImageFromPdf(Buffer.from(req.data, "base64"), !targetLooksE2E).catch(() => null);
         if (single) {
-          logger.info("print: PDF is a single full-page photo — printing the image directly");
-          return printImage(single.jpeg, req, req.printer, copies, [single.widthPt, single.heightPt]);
+          const fallbackPt: [number, number] = [single.widthPt, single.heightPt];
+          // Same gap this session closed for the custom-size PDF path and
+          // for image uploads: resolve the REAL target (the driver's own
+          // reported size for req.paperSize, not just the embedded photo's
+          // own page size) and pad the extracted photo to match it before
+          // handing it to printImage — contain-fit alone only guarantees no
+          // crop, not no gap, when the photo's own ratio doesn't exactly
+          // match the selected named size.
+          const { w: targetWMicron, h: targetHMicron } = await resolvePageMicrons(req, req.printer, fallbackPt);
+          const targetWIn = targetWMicron / MICRONS_PER_INCH;
+          const targetHIn = targetHMicron / MICRONS_PER_INCH;
+          const padded = await padImageToAspect(single.jpeg, targetWIn, targetHIn);
+          logger.info(
+            `print: PDF is a single full-page photo — printing the image directly, padded to ${targetWIn.toFixed(3)}x${targetHIn.toFixed(
+              3
+            )}in`
+          );
+          return printImage(padded, req, req.printer, copies, fallbackPt);
         }
 
         // A genuine multi-element document, but the caller gave an explicit
