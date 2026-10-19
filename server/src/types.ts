@@ -138,6 +138,16 @@ export interface PrintRequest extends ConnectionTarget {
    *  and E2E/bleed configuration for that exact size, which an explicit
    *  {width,height} override doesn't carry over — only the two numbers. */
   useDriverDefaultSize?: boolean;
+  /** Image printing only, custom sizes only: shrink the page ~4% before
+   *  sending to the driver, as a safety margin against the real loaded
+   *  paper being smaller than the declared custom size (e.g. a padded
+   *  "nominal + bleed" size printed on plain, unpadded stock). This is
+   *  NOT inferred automatically from useDriverDefaultSize — many real
+   *  workflows type a custom size for every job, including ones where the
+   *  paper genuinely matches, and auto-shrinking those reintroduces an
+   *  unwanted margin. Leave this to the operator, who knows which job's
+   *  paper stock is actually in question. Defaults to false (no shrink). */
+  paperSafetyShrink?: boolean;
   /** Image printing only: rotate the picture clockwise on the page (0, 90,
    *  180 or 270 degrees). */
   rotation?: number;

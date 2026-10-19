@@ -634,22 +634,18 @@ async function printImageChromium(
       landscape: w > h,
       // Chromium takes the page size portrait-oriented and applies `landscape` on top.
       pageSize: { width: Math.min(w, h), height: Math.max(w, h) },
-      // Safety shrink — ONLY for "type your own size" (useDriverDefaultSize),
-      // never for a named/driver-reported size (live dropdown sizes, e.g.
-      // "5x7in E2E") or a fixed size (Letter/A4 picked normally). Confirmed
-      // as a real, reproducible bug: a manually-typed custom size (set to
-      // "nominal + driver margin", e.g. A4 8.27x11.69 padded to 8.84x12.18)
-      // physically cut off content when the real paper loaded was plain
-      // A4 — because a manually-typed custom size has no guarantee the
-      // physical paper actually matches it (unlike a driver-reported named
-      // size, which the printer itself vouches for), and Electron's print
-      // API has no "shrink to fit the real printable area" of its own
-      // (unlike Adobe/Ctrl+P's own print dialogs, which do this
-      // automatically — confirmed by the same file printing correctly
-      // through them on the same physical paper). Scoped to only this one
-      // path specifically so it can never reintroduce a margin on the
-      // named/fixed sizes that are already confirmed correct without it.
-      ...(req.useDriverDefaultSize ? { scaleFactor: CUSTOM_SIZE_SAFETY_SCALE_PERCENT } : {}),
+      // Safety shrink — ONLY when the operator explicitly opts in
+      // (`paperSafetyShrink`) for this specific job. NOT tied to
+      // useDriverDefaultSize: that flag is sent for every manually-typed
+      // custom size, including the many real jobs where the paper genuinely
+      // matches — auto-shrinking all of those reintroduced an unwanted
+      // margin on already-correct prints (confirmed: real top/bottom gap
+      // appeared on jobs that were fine before). Electron's print API has
+      // no "shrink to fit the real printable area" of its own (unlike
+      // Adobe/Ctrl+P's own print dialogs), so when the operator knows a
+      // specific job's declared size might exceed the real loaded stock,
+      // they opt in per-job instead of it being guessed automatically.
+      ...(req.paperSafetyShrink ? { scaleFactor: CUSTOM_SIZE_SAFETY_SCALE_PERCENT } : {}),
     };
     // Exactly what gets handed to Electron/the Windows driver — the single
     // most useful line for checking "what did PrintTrays actually ask the

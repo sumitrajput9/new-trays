@@ -83,6 +83,7 @@ export default function DemoPage() {
   const [useCustomSize, setUseCustomSize] = useState(false);
   const [customWidthIn, setCustomWidthIn] = useState(11);
   const [customHeightIn, setCustomHeightIn] = useState(17);
+  const [paperSafetyShrink, setPaperSafetyShrink] = useState(false);
 
   const appendLog = (line: string) => setLog((l) => [`${new Date().toLocaleTimeString()}  ${line}`, ...l]);
 
@@ -646,6 +647,7 @@ export default function DemoPage() {
         // overriding page size/orientation explicitly, which was silently
         // leaving out that default's own feed-direction/E2E configuration.
         ...(useCustomSize ? { useDriverDefaultSize: true } : {}),
+        ...(useCustomSize && paperSafetyShrink ? { paperSafetyShrink: true } : {}),
         landscape,
         color,
         copies,
@@ -842,6 +844,16 @@ export default function DemoPage() {
                       />
                       <span>in</span>
                     </div>
+                  )}
+                  {useCustomSize && (
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, fontSize: 12, color: "var(--text-dim)" }}>
+                      <input
+                        type="checkbox"
+                        checked={paperSafetyShrink}
+                        onChange={(e) => setPaperSafetyShrink(e.target.checked)}
+                      />
+                      Shrink ~4% for safety (check this only if the real loaded paper might be smaller than this size, e.g. plain stock instead of padded/bleed stock — leave unchecked when the paper matches, to avoid a margin)
+                    </label>
                   )}
                   {useCustomSize && (
                     <button
