@@ -1093,15 +1093,30 @@ try {
   $ps.PrinterName = $p.printer
   if ([int]$p.copies -gt 1) { $ps.Copies = [int16]$p.copies }
 
-  # Standard DEVMODEW field offsets (fixed by the Win32 API spec, not
-  # driver-specific — only the bytes AFTER this fixed block are
-  # driver-private, and those are the ones being left untouched here).
-  $OFFSET_DMORIENTATION = 76
-  $OFFSET_DMFIELDS = 72
-  $OFFSET_DMPAPERSIZE = 78
-  $OFFSET_DMPAPERLENGTH = 80
-  $OFFSET_DMPAPERWIDTH = 82
-  $OFFSET_DMCOLOR = 92
+  # CORRECTED (found via real-hardware byte-level verification — see commit
+  # message): this script calls the ANSI Win32 entry points (OpenPrinterA /
+  # DocumentPropertiesA), which return a DEVMODEA struct whose dmDeviceName
+  # is BYTE[32] (32 bytes) — NOT the 64-byte WCHAR[32] dmDeviceName that
+  # DEVMODEW (the Unicode variant) has. Every offset below had been
+  # computed for DEVMODEW's layout and was therefore 32 bytes too far into
+  # the buffer — patching into dmSize/dmDriverExtra/dmFields/the start of
+  # dmFormName instead of the real target fields, while leaving the ACTUAL
+  # dmOrientation/dmPaperSize/dmPaperLength/dmPaperWidth/dmColor fields
+  # completely untouched (still whatever the driver's live state already
+  # had). Confirmed empirically: dumping this exact printer's true live
+  # DEVMODEA via this same P/Invoke path and decoding at these corrected
+  # offsets gives a perfectly intact "Noritsu 931BL (Tray 5)" device name
+  # and sane values for every field (dmSize=156, dmDriverExtra=8252,
+  # 156+8252 matching the exact total buffer length) — versus visibly
+  # garbled output at the old, wrong offsets. This explains why past
+  # explicit-orientation attempts (scoped to the old, wrong offset) had no
+  # physical effect: that write was never landing on dmOrientation at all.
+  $OFFSET_DMORIENTATION = 44
+  $OFFSET_DMFIELDS = 40
+  $OFFSET_DMPAPERSIZE = 46
+  $OFFSET_DMPAPERLENGTH = 48
+  $OFFSET_DMPAPERWIDTH = 50
+  $OFFSET_DMCOLOR = 60
   $DM_ORIENTATION = 0x1; $DM_PAPERSIZE = 0x2; $DM_PAPERLENGTH = 0x4; $DM_PAPERWIDTH = 0x8; $DM_COLOR = 0x800
   $DMPAPER_USER = 256
   $DMORIENT_PORTRAIT = 1; $DMORIENT_LANDSCAPE = 2
