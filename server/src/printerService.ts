@@ -983,7 +983,11 @@ async function printImageViaDevmode(image: Buffer, req: PrintRequest, printer: s
       color: req.color !== false,
       copies,
     });
-    logger.info(`print (devmode): requesting ${widthIn.toFixed(2)}x${heightIn.toFixed(2)}in, explicit PaperSize, printer="${printer}"`);
+    logger.info(
+      `print (devmode): requesting ${widthIn.toFixed(2)}x${heightIn.toFixed(2)}in, explicit PaperSize, orientation=${
+        widthIn > heightIn ? "Landscape" : "Portrait"
+      } (set explicitly, not inherited from driver state), printer="${printer}"`
+    );
     const stdout = await new Promise<string>((resolve, reject) => {
       const child = execFile(
         "powershell",
@@ -1092,13 +1096,15 @@ try {
   # Standard DEVMODEW field offsets (fixed by the Win32 API spec, not
   # driver-specific — only the bytes AFTER this fixed block are
   # driver-private, and those are the ones being left untouched here).
+  $OFFSET_DMORIENTATION = 76
   $OFFSET_DMFIELDS = 72
   $OFFSET_DMPAPERSIZE = 78
   $OFFSET_DMPAPERLENGTH = 80
   $OFFSET_DMPAPERWIDTH = 82
   $OFFSET_DMCOLOR = 92
-  $DM_PAPERSIZE = 0x2; $DM_PAPERLENGTH = 0x4; $DM_PAPERWIDTH = 0x8; $DM_COLOR = 0x800
+  $DM_ORIENTATION = 0x1; $DM_PAPERSIZE = 0x2; $DM_PAPERLENGTH = 0x4; $DM_PAPERWIDTH = 0x8; $DM_COLOR = 0x800
   $DMPAPER_USER = 256
+  $DMORIENT_PORTRAIT = 1; $DMORIENT_LANDSCAPE = 2
   $DMCOLOR_MONOCHROME = 1; $DMCOLOR_COLOR = 2
 
   # DEVMODE paper dimensions are in tenths of a millimeter, not hundredths
@@ -1111,8 +1117,17 @@ try {
   $pDevMode = [PrintTraysDevmode]::GlobalLock($hDevMode)
   try {
     $fields = [System.Runtime.InteropServices.Marshal]::ReadInt32($pDevMode, $OFFSET_DMFIELDS)
-    $fields = $fields -bor $DM_PAPERSIZE -bor $DM_PAPERLENGTH -bor $DM_PAPERWIDTH -bor $DM_COLOR
+    $fields = $fields -bor $DM_ORIENTATION -bor $DM_PAPERSIZE -bor $DM_PAPERLENGTH -bor $DM_PAPERWIDTH -bor $DM_COLOR
     [System.Runtime.InteropServices.Marshal]::WriteInt32($pDevMode, $OFFSET_DMFIELDS, $fields)
+    # Explicit, not preserved: preserving whatever orientation the driver's
+    # shared/mutable state currently happens to hold (left over from some
+    # OTHER job — Adobe, Ctrl+P, a previous PrintTrays print) is exactly the
+    # same "shared mutable state" trap already documented for the paper-size
+    # slot above. Our own target width/height already say, unambiguously,
+    # which shape this job is — set it from that instead of trusting
+    # whatever was last left behind.
+    $orientValue = if ([double]$p.widthIn -gt [double]$p.heightIn) { $DMORIENT_LANDSCAPE } else { $DMORIENT_PORTRAIT }
+    [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMORIENTATION, [int16]$orientValue)
     [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMPAPERSIZE, [int16]$DMPAPER_USER)
     [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMPAPERLENGTH, $heightTenthsMm)
     [System.Runtime.InteropServices.Marshal]::WriteInt16($pDevMode, $OFFSET_DMPAPERWIDTH, $widthTenthsMm)
